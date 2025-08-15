@@ -11,55 +11,43 @@ interface CompanyProfile {
   id?: number;
   companyName: string;
   cageCode: string;
-  dunsNumber: string;
-  addressLine1: string;
-  addressLine2: string;
-  city: string;
-  state: string;
-  zipCode: string;
-  country: string;
-  pocName: string;
-  pocTitle: string;
-  pocEmail: string;
-  pocPhone: string;
-  smallBusiness: boolean;
+  samUei: string;
+  samRegistered: boolean;
+  naicsCode: string;
+  naicsSize: string;
+  businessType: string;
+  smallDisadvantaged: boolean;
   womanOwned: boolean;
   veteranOwned: boolean;
+  serviceDisabledVetOwned: boolean;
   hubZone: boolean;
-  eightA: boolean;
-  naicsCode: string;
-  taxId: string;
-  paymentTerms: string;
-  shippingTerms: string;
-  websiteUrl: string;
-  capabilities: string;
+  historicallyUnderutilized: boolean;
+  alaskaNativeCorp: boolean;
+  defaultPaymentTerms: string;
+  defaultPaymentTermsOther: string;
+  defaultFob: string;
+  defaultPurchaseOrderMin: string;
+  defaultComplimentaryFreight: boolean;
+  defaultPpaByVendor: boolean;
+  contactPerson: string;
+  contactEmail: string;
+  contactPhone: string;
+  address: string;
 }
 
 const defaultProfile: CompanyProfile = {
   companyName: "",
   cageCode: "",
-  dunsNumber: "",
-  addressLine1: "",
-  addressLine2: "",
-  city: "",
-  state: "",
-  zipCode: "",
-  country: "USA",
-  pocName: "",
-  pocTitle: "",
-  pocEmail: "",
-  pocPhone: "",
-  smallBusiness: false,
+  samUei: "",
+  samRegistered: false,
+  naicsCode: "",
+  naicsSize: "",
+  businessType: "Small",
+  smallDisadvantaged: false,
   womanOwned: false,
   veteranOwned: false,
+  serviceDisabledVetOwned: false,
   hubZone: false,
-  eightA: false,
-  naicsCode: "",
-  taxId: "",
-  paymentTerms: "",
-  shippingTerms: "",
-  websiteUrl: "",
-  capabilities: "",
   historicallyUnderutilized: false,
   alaskaNativeCorp: false,
   defaultPaymentTerms: "Net 30",

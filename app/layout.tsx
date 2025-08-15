@@ -6,8 +6,8 @@ import { Toaster } from "@/components/ui/toaster";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "RFQ Management System",
-  description: "Streamlined RFQ processing and management",
+  title: "Simurgh - RFQ Handler",
+  description: "The wise phoenix that aids heroes in conquering RFQs",
 };
 
 export default function RootLayout({
