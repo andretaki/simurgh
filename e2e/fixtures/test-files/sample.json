@@ -1,0 +1,6 @@
+{
+  "title": "Test RFQ",
+  "description": "This is a test RFQ for E2E testing",
+  "budget": 50000,
+  "deadline": "2025-12-31"
+}

@@ -1,0 +1,50 @@
+# Page snapshot
+
+```yaml
+- heading "Analytics Dashboard" [level=1]:
+  - img
+  - text: Analytics Dashboard
+- paragraph: Real-time insights into your RFQ processing performance
+- combobox:
+  - option "Last 7 days"
+  - option "Last 30 days" [selected]
+  - option "Last 90 days"
+- button "Filters":
+  - img
+  - text: Filters
+- button "Export":
+  - img
+  - text: Export
+- text: Total RFQs Processed
+- img
+- text: "127"
+- img
+- text: 12.5% vs last period Success Rate
+- img
+- text: 92.9%
+- img
+- text: 3.2% vs last period Time Saved
+- img
+- text: 84h 40m
+- img
+- text: 18.7% vs last period Total Value Quoted
+- img
+- text: $2.8M
+- img
+- text: 24.3% vs last period
+- img
+- text: Processing Trends Mon 12 Tue 18 Wed 15 Thu 22 Fri 28 Sat 8 Sun 5
+- img
+- text: Performance Score 94.5 Overall Score
+- img
+- text: Processing Speed 3.8s avg Extraction Accuracy 94.5% Automation Rate 87.3% Error Rate 2.1%
+- img
+- text: Most Extracted Fields Payment Terms 95% conf Delivery Date 92% conf CAGE Code 98% conf Unit Price 90% conf Quantity 96% conf
+- img
+- text: "Top Contracting Offices NAVSUP FLC Norfolk 42 RFQs #1 DLA Aviation 38 RFQs #2 Army Contracting Command 31 RFQs #3 Air Force Material Command 16 RFQs #4"
+- img
+- text: Document Types RFQ 61.4% 78 documents RFP 25.2% 32 documents RFI 13.4% 17 documents
+- region "Notifications (F8)":
+  - list
+- alert
+```

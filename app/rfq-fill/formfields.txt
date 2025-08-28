@@ -1,0 +1,539 @@
+PDF Total Pages: 12
+Total Form Fields: 57
+==================================
+
+Name: SpecInst7TextField1
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":348.44,"y":493,"width":23.899999999999977,"height":10}
+  Flags: 4
+----------------------------------
+Name: SpecInst8Checkbox1
+  Type: PDFCheckBox
+  Value: Unchecked
+  Page: 0
+  Rect: {"x":308.86,"y":432,"width":8,"height":8}
+  Flags: 4
+----------------------------------
+Name: SpecInst8Checkbox2
+  Type: PDFCheckBox
+  Value: Unchecked
+  Page: 0
+  Rect: {"x":425.9,"y":432,"width":8,"height":8}
+  Flags: 4
+----------------------------------
+Name: SpecInst8Checkbox3
+  Type: PDFCheckBox
+  Value: Unchecked
+  Page: 0
+  Rect: {"x":337.34,"y":420,"width":8,"height":8}
+  Flags: 4
+----------------------------------
+Name: priceFirmUntil
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":109.66,"y":338.4,"width":100,"height":10}
+  Flags: 4
+----------------------------------
+Name: quoteRefNum
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":264.78,"y":338.4,"width":100,"height":10}
+  Flags: 4
+----------------------------------
+Name: paymentTerms
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":113.45,"y":320.9,"width":10,"height":10}
+  Flags: 4
+  Widget: 1 of 2
+----------------------------------
+Name: paymentTerms
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":288.66,"y":320.9,"width":10,"height":10}
+  Flags: 4
+  Widget: 2 of 2
+----------------------------------
+Name: paymentTermsOther
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":339.85,"y":322.4,"width":100,"height":10}
+  Flags: 4
+----------------------------------
+Name: complimentaryFreight
+  Type: PDFCheckBox
+  Value: Unchecked
+  Page: 0
+  Rect: {"x":98.17,"y":304.9,"width":10,"height":10}
+  Flags: 4
+----------------------------------
+Name: ppaByVender
+  Type: PDFCheckBox
+  Value: Unchecked
+  Page: 0
+  Rect: {"x":194.88,"y":304.9,"width":10,"height":10}
+  Flags: 4
+----------------------------------
+Name: fob
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":66.61,"y":288.9,"width":10,"height":10}
+  Flags: 4
+  Widget: 1 of 2
+----------------------------------
+Name: fob
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":116.1,"y":288.9,"width":10,"height":10}
+  Flags: 4
+  Widget: 2 of 2
+----------------------------------
+Name: purchaseOrderMinimum
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":150.38,"y":274.4,"width":100,"height":10}
+  Flags: 4
+----------------------------------
+Name: SAMUEI
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":80.42,"y":258.4,"width":99.99999999999999,"height":10}
+  Flags: 4
+----------------------------------
+Name: CAGE
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":239.2,"y":258.4,"width":100,"height":10}
+  Flags: 4
+----------------------------------
+Name: SAM
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":446.1,"y":256.9,"width":10,"height":10}
+  Flags: 4
+  Widget: 1 of 2
+----------------------------------
+Name: SAM
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":482.1,"y":256.9,"width":10,"height":10}
+  Flags: 4
+  Widget: 2 of 2
+----------------------------------
+Name: NAICS
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":93.19,"y":242.4,"width":100,"height":10}
+  Flags: 4
+----------------------------------
+Name: NAICSSIZE
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":535.82,"y":242.4,"width":30,"height":10}
+  Flags: 4
+----------------------------------
+Name: BT
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":102.24,"y":224.9,"width":10,"height":10}
+  Flags: 4
+  Widget: 1 of 2
+----------------------------------
+Name: BT
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":142.24,"y":224.9,"width":10,"height":10}
+  Flags: 4
+  Widget: 2 of 2
+----------------------------------
+Name: smalldisad
+  Type: PDFCheckBox
+  Value: Unchecked
+  Page: 0
+  Rect: {"x":46,"y":198.1,"width":10,"height":10}
+  Flags: 4
+----------------------------------
+Name: HubZone
+  Type: PDFCheckBox
+  Value: Unchecked
+  Page: 0
+  Rect: {"x":287.09,"y":198.1,"width":10,"height":10}
+  Flags: 4
+----------------------------------
+Name: womenowned
+  Type: PDFCheckBox
+  Value: Unchecked
+  Page: 0
+  Rect: {"x":46,"y":174.9,"width":10,"height":10}
+  Flags: 4
+----------------------------------
+Name: vetowned
+  Type: PDFCheckBox
+  Value: Unchecked
+  Page: 0
+  Rect: {"x":287.46,"y":174.9,"width":10,"height":10}
+  Flags: 4
+----------------------------------
+Name: sdvet
+  Type: PDFCheckBox
+  Value: Unchecked
+  Page: 0
+  Rect: {"x":46,"y":151.7,"width":10,"height":10}
+  Flags: 4
+----------------------------------
+Name: hist
+  Type: PDFCheckBox
+  Value: Unchecked
+  Page: 0
+  Rect: {"x":287.5,"y":151.7,"width":10,"height":10}
+  Flags: 4
+----------------------------------
+Name: ANC
+  Type: PDFCheckBox
+  Value: Unchecked
+  Page: 0
+  Rect: {"x":46,"y":128.5,"width":10,"height":10}
+  Flags: 4
+----------------------------------
+Name: other
+  Type: PDFCheckBox
+  Value: Unchecked
+  Page: 0
+  Rect: {"x":288.01,"y":128.5,"width":10,"height":10}
+  Flags: 4
+----------------------------------
+Name: size
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":36,"y":94.5,"width":10,"height":10}
+  Flags: 4
+  Widget: 1 of 5
+----------------------------------
+Name: size
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":77,"y":94.5,"width":10,"height":10}
+  Flags: 4
+  Widget: 2 of 5
+----------------------------------
+Name: size
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":132,"y":94.5,"width":10,"height":10}
+  Flags: 4
+  Widget: 3 of 5
+----------------------------------
+Name: size
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":192,"y":94.5,"width":10,"height":10}
+  Flags: 4
+  Widget: 4 of 5
+----------------------------------
+Name: size
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":260,"y":94.5,"width":10,"height":10}
+  Flags: 4
+  Widget: 5 of 5
+----------------------------------
+Name: noBidCode
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":36,"y":736.5,"width":10,"height":10}
+  Flags: 4
+  Widget: 1 of 4
+----------------------------------
+Name: noBidCode
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":204.42,"y":736.5,"width":10,"height":10}
+  Flags: 4
+  Widget: 2 of 4
+----------------------------------
+Name: noBidCode
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":36,"y":720.5,"width":10,"height":10}
+  Flags: 4
+  Widget: 3 of 4
+----------------------------------
+Name: noBidCode
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":193.42,"y":720.5,"width":10,"height":10}
+  Flags: 4
+  Widget: 4 of 4
+----------------------------------
+Name: noBidReason
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":244.61,"y":722,"width":100,"height":10}
+  Flags: 4
+----------------------------------
+Name: unitCost-1
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":80.59,"y":554,"width":100,"height":10}
+  Flags: 4
+----------------------------------
+Name: deliveryDays-1
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":246.55,"y":552,"width":50,"height":12}
+  Flags: 4
+----------------------------------
+Name: madeIn-1
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":377.89,"y":552.5,"width":10,"height":10}
+  Flags: 4
+  Widget: 1 of 2
+----------------------------------
+Name: madeIn-1
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":426.31,"y":552.5,"width":10,"height":10}
+  Flags: 4
+  Widget: 2 of 2
+----------------------------------
+Name: madeInOther-1
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":472.98,"y":554,"width":72,"height":10}
+  Flags: 4
+----------------------------------
+Name: exceptionNote-1
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":105.28,"y":538,"width":264,"height":10}
+  Flags: 4
+----------------------------------
+Name: noBidReason-1
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":36,"y":505.5,"width":10,"height":10}
+  Flags: 4
+  Widget: 1 of 5
+----------------------------------
+Name: noBidReason-1
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":125.5,"y":505.5,"width":10,"height":10}
+  Flags: 4
+  Widget: 2 of 5
+----------------------------------
+Name: noBidReason-1
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":293.82,"y":505.5,"width":10,"height":10}
+  Flags: 4
+  Widget: 3 of 5
+----------------------------------
+Name: noBidReason-1
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":36,"y":489.5,"width":10,"height":10}
+  Flags: 4
+  Widget: 4 of 5
+----------------------------------
+Name: noBidReason-1
+  Type: PDFRadioGroup
+  Value: 
+  Page: 0
+  Rect: {"x":136.29,"y":489.5,"width":10,"height":10}
+  Flags: 4
+  Widget: 5 of 5
+----------------------------------
+Name: noBidOther-1
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":173.51,"y":489,"width":300,"height":12}
+  Flags: 4
+----------------------------------
+Name: polchemQuestion1-1
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":292.11,"y":455,"width":50,"height":12}
+  Flags: 4
+----------------------------------
+Name: polchemQuestion2-1
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":171.55,"y":439,"width":50,"height":12}
+  Flags: 4
+----------------------------------
+Name: polchemQuestion3-1
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":130.98,"y":423,"width":50,"height":12}
+  Flags: 4
+----------------------------------
+Name: S006TextField1
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":125.05,"y":656,"width":14.940000000000012,"height":10}
+  Flags: 4
+----------------------------------
+Name: S006TextField1
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":151.68,"y":656,"width":14.939999999999998,"height":10}
+  Flags: 4
+----------------------------------
+Name: S006TextField2
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":564.94,"y":656,"width":49.799999999999955,"height":10}
+  Flags: 4
+----------------------------------
+Name: S006TextField3
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":211.91,"y":592,"width":14.939999999999998,"height":10}
+  Flags: 4
+----------------------------------
+Name: S006TextField4
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":238.54,"y":592,"width":14.939999999999998,"height":10}
+  Flags: 4
+----------------------------------
+Name: S006TextField5
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":141.05,"y":560,"width":14.939999999999998,"height":10}
+  Flags: 4
+----------------------------------
+Name: S006TextField6
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":167.68,"y":560,"width":14.939999999999998,"height":10}
+  Flags: 4
+----------------------------------
+Name: S006TextField7
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":474.3,"y":560,"width":14.939999999999998,"height":10}
+  Flags: 4
+----------------------------------
+Name: S006TextField8
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":500.93,"y":560,"width":14.939999999999998,"height":10}
+  Flags: 4
+----------------------------------
+Name: S006TextField9
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":72,"y":512,"width":298.8,"height":10}
+  Flags: 4
+----------------------------------
+Name: S006TextField10
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":72,"y":512,"width":298.8,"height":10}
+  Flags: 4
+----------------------------------
+Name: S006TextField11
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":72,"y":512,"width":298.8,"height":10}
+  Flags: 4
+----------------------------------
+Name: S006TextField12
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":72,"y":512,"width":298.8,"height":10}
+  Flags: 4
+----------------------------------
+Name: S006TextField13
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":97.65,"y":496,"width":99.6,"height":10}
+  Flags: 4
+----------------------------------
+Name: S006TextField13
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":119.33,"y":496,"width":94.61999999999999,"height":10}
+  Flags: 4
+----------------------------------
+Name: dm-companyid
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":400,"y":620,"width":120,"height":10}
+  Flags: 6
+----------------------------------
+Name: vendor_rfq_id
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":400,"y":620,"width":120,"height":10}
+  Flags: 6
+----------------------------------
+Name: userID
+  Type: PDFTextField
+  Value: 
+  Page: 0
+  Rect: {"x":400,"y":620,"width":120,"height":10}
+  Flags: 6
+----------------------------------

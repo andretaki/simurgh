@@ -1,0 +1,50 @@
+{
+  "companyProfile": {
+    "companyName": "Alliance Chemicals",
+    "vendorCode": "ALL510",
+    "cageCode": "ALL510",
+    "samUei": "",
+    "samRegistered": false,
+    "naicsCode": "424690",
+    "naicsSize": "175",
+    "businessType": "Small",
+    "smallDisadvantaged": false,
+    "womanOwned": false,
+    "veteranOwned": false,
+    "serviceDisabledVetOwned": false,
+    "hubZone": false,
+    "historicallyUnderutilized": false,
+    "alaskaNativeCorp": false,
+    "defaultPaymentTerms": "Net 30 Days",
+    "defaultPaymentTermsOther": "",
+    "defaultFob": "Shipping Point",
+    "defaultPurchaseOrderMin": "",
+    "defaultComplimentaryFreight": false,
+    "defaultPpaByVendor": false,
+    "contactPerson": "Hossein Taki",
+    "contactEmail": "alliance@alliancechemical.com",
+    "contactPhone": "512-365-6838",
+    "contactFax": "512-365-6833",
+    "address": "204 S Edmond St, Taylor, TX 76574-0721, United States",
+    "taxExemptions": {
+      "CA": "206-230304"
+    }
+  },
+  "additionalInfo": {
+    "description": "Chemical and Allied Products Merchant Wholesaler",
+    "naicsDescription": "Other Chemical and Allied Products Merchant Wholesalers",
+    "sizeStandard": "175 employees",
+    "typicalBuyer": "ASRC Federal",
+    "typicalProducts": [
+      "Lubricating oils",
+      "Chemical products",
+      "Industrial supplies"
+    ]
+  },
+  "metadata": {
+    "createdAt": "2025-01-27",
+    "updatedAt": "2025-01-27",
+    "source": "Purchase Order #821-45659232",
+    "verified": true
+  }
+}
