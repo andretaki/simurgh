@@ -16,6 +16,9 @@ export async function POST(request: NextRequest) {
 
     // Build where conditions
     const conditions = [];
+    
+    // Always exclude checkpoint entries
+    conditions.push(sql`${rfqDocuments.fileName} != 'email_ingestion_checkpoint'`);
 
     // Text search across multiple fields
     if (query) {
