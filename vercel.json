@@ -2,7 +2,18 @@
   "crons": [
     {
       "path": "/api/email/poll",
-      "schedule": "0 * * * *"
+      "schedule": "*/15 * * * *"
     }
-  ]
+  ],
+  "functions": {
+    "app/api/email/poll/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/rfq/response/generate-pdf/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/rfq/extract/route.ts": {
+      "maxDuration": 60
+    }
+  }
 }
