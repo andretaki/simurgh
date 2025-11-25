@@ -7,7 +7,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { Loader2, Save, Building2 } from "lucide-react";
 import Link from "next/link";
 
-interface CompanyProfile {
+// Form-specific type that uses empty strings instead of null for form inputs
+interface CompanyProfileForm {
   id?: number;
   companyName: string;
   cageCode: string;
@@ -35,7 +36,7 @@ interface CompanyProfile {
   address: string;
 }
 
-const defaultProfile: CompanyProfile = {
+const defaultProfile: CompanyProfileForm = {
   companyName: "",
   cageCode: "",
   samUei: "",
@@ -62,9 +63,19 @@ const defaultProfile: CompanyProfile = {
   address: "",
 };
 
+// Helper to convert API response (with nulls) to form data (with empty strings)
+function toFormData(data: Record<string, unknown>): CompanyProfileForm {
+  return {
+    ...defaultProfile,
+    ...Object.fromEntries(
+      Object.entries(data).map(([key, value]) => [key, value ?? (typeof defaultProfile[key as keyof CompanyProfileForm] === 'boolean' ? false : "")])
+    ),
+  } as CompanyProfileForm;
+}
+
 export default function CompanySettingsPage() {
   const { toast } = useToast();
-  const [profile, setProfile] = useState<CompanyProfile>(defaultProfile);
+  const [profile, setProfile] = useState<CompanyProfileForm>(defaultProfile);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -170,7 +181,7 @@ export default function CompanySettingsPage() {
             Company Profile Settings
           </CardTitle>
           <p className="text-sm text-gray-600 mt-2">
-            Configure your company's default information for RFQ submissions. This information will be used to auto-fill RFQ forms.
+            Configure your company&apos;s default information for RFQ submissions. This information will be used to auto-fill RFQ forms.
           </p>
         </CardHeader>
         <CardContent>

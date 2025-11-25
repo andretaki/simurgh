@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { rfqResponses } from "@/drizzle/migrations/schema";
 import { eq, desc } from "drizzle-orm";
+import { RfqResponseCreateSchema } from "@/lib/validations/api";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -9,22 +10,34 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
-    
-    // Save response to database
-    const [response] = await db.insert(rfqResponses).values({
+    const parseResult = RfqResponseCreateSchema.safeParse({
       rfqDocumentId: data.rfqId,
       responseData: data,
-      pdfGenerated: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      status: data.status,
+    });
+
+    if (!parseResult.success) {
+      return NextResponse.json(
+        { error: "Validation failed", details: parseResult.error.errors },
+        { status: 400 }
+      );
+    }
+
+    const validatedData = parseResult.data;
+
+    // Save response to database
+    const [response] = await db.insert(rfqResponses).values({
+      rfqDocumentId: validatedData.rfqDocumentId,
+      responseData: validatedData.responseData,
+      status: validatedData.status || "draft",
     }).returning();
-    
-    return NextResponse.json({ 
-      success: true, 
+
+    return NextResponse.json({
+      success: true,
       id: response.id,
       message: "Response saved successfully"
     });
-    
+
   } catch (error) {
     console.error("Error saving response:", error);
     return NextResponse.json(

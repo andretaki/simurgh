@@ -1,14 +1,13 @@
-// app/api/summarizer/route.ts
+// app/api/rfq/extract/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { OpenAI } from "openai";
+import logger from "@/lib/logger";
 
 const openaiApiKey = process.env.OPENAI_API_KEY;
 const openai = new OpenAI({ apiKey: openaiApiKey });
 
 if (!openaiApiKey) {
-  console.error("Error: OpenAI API key is missing");
-} else {
-  console.log("OpenAI API Key Loaded Successfully");
+  logger.error("OpenAI API key is missing");
 }
 
 export async function POST(request: NextRequest) {
@@ -103,8 +102,9 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ summary });
-  } catch (error: any) {
-    console.error("Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    logger.error("Error extracting RFQ fields", error);
+    const message = error instanceof Error ? error.message : "Failed to extract fields";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

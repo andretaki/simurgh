@@ -2,17 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { rfqDocuments, rfqResponses } from "@/drizzle/migrations/schema";
 import { and, or, like, gte, lte, eq, desc, asc, sql } from "drizzle-orm";
+import { RfqSearchSchema } from "@/lib/validations/api";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const parseResult = RfqSearchSchema.safeParse(body);
+
+    if (!parseResult.success) {
+      return NextResponse.json(
+        { error: "Validation failed", details: parseResult.error.errors },
+        { status: 400 }
+      );
+    }
+
     const {
       query,
       filters = {},
       sort = { field: "createdAt", order: "desc" },
       pagination = { page: 1, limit: 20 },
       includeExtractedFields = false,
-    } = body;
+    } = parseResult.data;
 
     // Build where conditions
     const conditions = [];
@@ -22,12 +32,13 @@ export async function POST(request: NextRequest) {
 
     // Text search across multiple fields
     if (query) {
+      const searchPattern = `%${query}%`;
       conditions.push(
         or(
-          like(rfqDocuments.fileName, `%${query}%`),
-          like(rfqDocuments.rfqNumber, `%${query}%`),
-          like(rfqDocuments.contractingOffice, `%${query}%`),
-          sql`${rfqDocuments.extractedText} ILIKE '%${query}%'`
+          like(rfqDocuments.fileName, searchPattern),
+          like(rfqDocuments.rfqNumber, searchPattern),
+          like(rfqDocuments.contractingOffice, searchPattern),
+          sql`${rfqDocuments.extractedText} ILIKE ${searchPattern}`
         )
       );
     }
@@ -79,8 +90,9 @@ export async function POST(request: NextRequest) {
     // Advanced filters on extracted fields
     if (filters.extractedFields) {
       Object.entries(filters.extractedFields).forEach(([key, value]) => {
+        // Use parameterized query to prevent SQL injection
         conditions.push(
-          sql`${rfqDocuments.extractedFields}->>'${key}' = ${value}`
+          sql`${rfqDocuments.extractedFields}->>${ sql.raw(`'${key.replace(/'/g, "''")}'`) } = ${value}`
         );
       });
     }

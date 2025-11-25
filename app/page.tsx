@@ -28,17 +28,18 @@ import {
   Rocket,
   Target,
 } from "lucide-react";
+import type { ActivityItem, SystemHealth, DashboardStats } from "@/lib/types";
 
 export default function HomePage() {
-  const [systemStatus, setSystemStatus] = useState({
+  const [systemStatus, setSystemStatus] = useState<SystemHealth>({
     database: "checking",
     s3: "checking",
     openai: "checking",
     server: "online"
   });
 
-  const [recentActivity, setRecentActivity] = useState<any[]>([]);
-  const [stats, setStats] = useState({
+  const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
+  const [stats, setStats] = useState<DashboardStats>({
     documentsToday: 0,
     pendingActions: 0,
     processingQueue: 0,

@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { FileText, Download, Calendar, Search, Eye, Clock } from "lucide-react";
 import Link from "next/link";
 
+import type { ExtractedFields } from "@/lib/types";
+
 interface RFQHistoryItem {
   id: number;
   fileName: string;
@@ -16,7 +18,7 @@ interface RFQHistoryItem {
   dueDate: string | null;
   contractingOffice: string | null;
   s3Url: string | null;
-  extractedFields: any;
+  extractedFields: ExtractedFields | null;
 }
 
 interface RFQResponse {
@@ -292,7 +294,7 @@ export default function HistoryPage() {
                         {rfq.extractedFields.paymentTerms && (
                           <span>Payment: {rfq.extractedFields.paymentTerms}</span>
                         )}
-                        {rfq.extractedFields.items?.length > 0 && (
+                        {rfq.extractedFields.items && rfq.extractedFields.items.length > 0 && (
                           <span>Items: {rfq.extractedFields.items.length}</span>
                         )}
                       </div>

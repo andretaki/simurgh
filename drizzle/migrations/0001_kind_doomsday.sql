@@ -1,0 +1,82 @@
+CREATE TABLE "simurgh"."generated_labels" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"order_id" integer NOT NULL,
+	"quality_sheet_id" integer,
+	"label_type" varchar(20) NOT NULL,
+	"label_size" varchar(10) NOT NULL,
+	"product_name" varchar(255) NOT NULL,
+	"grade" varchar(50),
+	"spec" varchar(255),
+	"nsn" varchar(20),
+	"nsn_barcode" varchar(20),
+	"cage_code" varchar(20),
+	"po_number" varchar(50),
+	"lot_number" varchar(50),
+	"quantity" varchar(50),
+	"weight" varchar(20),
+	"assembly_date" varchar(20),
+	"inspection_date" varchar(20),
+	"mhm_date" varchar(20),
+	"container_type" varchar(100),
+	"manufacturer" varchar(255) DEFAULT 'ALLIANCE CHEMICAL',
+	"manufacturer_address" varchar(255) DEFAULT '204 S. EDMOND ST. TAYLOR, TEXAS 76574',
+	"manufacturer_phone" varchar(50) DEFAULT '512-365-6838',
+	"manufacturer_website" varchar(255) DEFAULT 'www.alliancechemical.com',
+	"hazard_class" varchar(50),
+	"un_number" varchar(20),
+	"pdf_s3_key" varchar(500),
+	"pdf_url" text,
+	"print_count" integer DEFAULT 0,
+	"last_printed_at" timestamp,
+	"created_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
+CREATE TABLE "simurgh"."government_orders" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"po_number" varchar(50) NOT NULL,
+	"product_name" varchar(255) NOT NULL,
+	"product_description" text,
+	"grade" varchar(50),
+	"nsn" varchar(20),
+	"nsn_barcode" varchar(20),
+	"quantity" integer NOT NULL,
+	"unit_of_measure" varchar(20),
+	"unit_contents" varchar(100),
+	"unit_price" numeric(10, 2),
+	"total_price" numeric(12, 2),
+	"spec" varchar(255),
+	"mil_std" varchar(100),
+	"ship_to_name" varchar(255),
+	"ship_to_address" text,
+	"delivery_date" timestamp,
+	"original_pdf_s3_key" varchar(500),
+	"original_pdf_url" text,
+	"extracted_data" jsonb,
+	"status" varchar(50) DEFAULT 'pending',
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
+CREATE TABLE "simurgh"."quality_sheets" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"order_id" integer NOT NULL,
+	"po_number" varchar(50) NOT NULL,
+	"lot_number" varchar(50) NOT NULL,
+	"nsn" varchar(20),
+	"quantity" integer NOT NULL,
+	"product_type" varchar(100),
+	"ship_to" text,
+	"assembly_date" varchar(20),
+	"inspection_date" varchar(20),
+	"mhm_date" varchar(20),
+	"cage_code" varchar(20) DEFAULT '1LT50',
+	"notes" text,
+	"verified_by" varchar(255),
+	"verified_at" timestamp,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
+ALTER TABLE "simurgh"."generated_labels" ADD CONSTRAINT "generated_labels_order_id_government_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "simurgh"."government_orders"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "simurgh"."generated_labels" ADD CONSTRAINT "generated_labels_quality_sheet_id_quality_sheets_id_fk" FOREIGN KEY ("quality_sheet_id") REFERENCES "simurgh"."quality_sheets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "simurgh"."quality_sheets" ADD CONSTRAINT "quality_sheets_order_id_government_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "simurgh"."government_orders"("id") ON DELETE cascade ON UPDATE no action;
