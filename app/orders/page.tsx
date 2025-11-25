@@ -18,6 +18,7 @@ import {
   Plus,
   Tag,
   Printer,
+  Trash2,
 } from "lucide-react";
 
 interface Order {
@@ -151,6 +152,40 @@ export default function OrdersPage() {
     );
   };
 
+  const deleteOrder = async (e: React.MouseEvent, orderId: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!confirm("Are you sure you want to delete this order?")) return;
+
+    try {
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        setOrders(orders.filter(o => o.id !== orderId));
+        toast({
+          title: "Order deleted",
+          description: "The order has been removed",
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Delete failed",
+          description: "Could not delete the order",
+        });
+      }
+    } catch (error) {
+      console.error("Delete failed:", error);
+      toast({
+        variant: "destructive",
+        title: "Delete failed",
+        description: "An unexpected error occurred",
+      });
+    }
+  };
+
   const filteredOrders = orders.filter(
     (order) =>
       order.poNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -273,10 +308,17 @@ export default function OrdersPage() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
                       <span className="text-sm text-gray-500">
                         {new Date(order.createdAt).toLocaleDateString()}
                       </span>
+                      <button
+                        onClick={(e) => deleteOrder(e, order.id)}
+                        className="p-1.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors"
+                        title="Delete order"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                       <ArrowRight className="h-4 w-4 text-gray-400" />
                     </div>
                   </Link>

@@ -15,6 +15,13 @@
       "when": 1764093212840,
       "tag": "0001_kind_doomsday",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1764103032203,
+      "tag": "0002_even_callisto",
+      "breakpoints": true
     }
   ]
 }
