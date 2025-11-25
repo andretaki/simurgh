@@ -12,7 +12,7 @@ export async function GET() {
         completedPdfUrl: rfqResponses.generatedPdfUrl,
         s3Key: rfqDocuments.s3Key,
         createdAt: rfqResponses.createdAt,
-        formData: rfqResponses.formData,
+        formData: rfqResponses.responseData,
       })
       .from(rfqResponses)
       .leftJoin(rfqDocuments, eq(rfqResponses.rfqDocumentId, rfqDocuments.id))

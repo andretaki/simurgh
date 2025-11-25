@@ -29,8 +29,9 @@ export async function getIngestionCheckpoint(): Promise<IngestionCheckpoint> {
       LIMIT 1
     `);
 
-    if (result.length > 0) {
-      const checkpoint = result[0].extractedFields as any;
+    const rows = (result as any).rows || result;
+    if (rows && rows.length > 0 && rows[0]?.extracted_fields) {
+      const checkpoint = rows[0].extracted_fields as any;
       return {
         lastSuccessfulRun: checkpoint.lastSuccessfulRun ? new Date(checkpoint.lastSuccessfulRun) : null,
         lastAttemptedRun: checkpoint.lastAttemptedRun ? new Date(checkpoint.lastAttemptedRun) : null,

@@ -63,8 +63,12 @@ export async function GET() {
     }));
 
     return NextResponse.json({ orders: ordersWithQualitySheets });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching orders:", error);
+    // Return empty array if table doesn't exist (42P01 = relation does not exist)
+    if (error?.code === '42P01') {
+      return NextResponse.json({ orders: [] });
+    }
     return NextResponse.json(
       { error: "Failed to fetch orders" },
       { status: 500 }

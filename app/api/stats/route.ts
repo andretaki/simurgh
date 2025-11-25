@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { companyProfiles } from "@/db/schema";
-import { rfqDocuments, rfqResponses } from "@/drizzle/migrations/schema";
+import { companyProfiles, rfqDocuments, rfqResponses } from "@/drizzle/migrations/schema";
 import { sql, count, desc, gte } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
