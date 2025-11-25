@@ -15,10 +15,12 @@ import {
   X,
   Plus,
   Package,
+  FolderOpen,
 } from "lucide-react";
 
 const navItems = [
   { title: "Dashboard", href: "/", icon: Home },
+  { title: "Projects", href: "/projects", icon: FolderOpen },
   { title: "Orders", href: "/orders", icon: Package },
   { title: "Settings", href: "/settings", icon: Settings },
 ];

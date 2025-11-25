@@ -107,6 +107,57 @@ export const rfqHistory = simurghSchema.table("rfq_history", {
 });
 
 // ===============================
+// PROJECTS / WORKSPACES
+// ===============================
+
+// Projects - groups RFQ, Quote, PO, Quality Sheet, Labels together
+export const projects = simurghSchema.table("projects", {
+  id: serial("id").primaryKey(),
+
+  // Project Info
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+
+  // Customer Info
+  customerName: varchar("customer_name", { length: 255 }),
+  contractingOffice: varchar("contracting_office", { length: 255 }),
+
+  // Document References
+  rfqDocumentId: integer("rfq_document_id").references(() => rfqDocuments.id),
+  rfqResponseId: integer("rfq_response_id").references(() => rfqResponses.id),
+  governmentOrderId: integer("government_order_id"), // Will reference governmentOrders
+
+  // Key extracted data for quick reference
+  rfqNumber: varchar("rfq_number", { length: 100 }),
+  poNumber: varchar("po_number", { length: 100 }),
+  nsn: varchar("nsn", { length: 20 }),
+  productName: varchar("product_name", { length: 255 }),
+  quantity: integer("quantity"),
+
+  // AI Comparison Results
+  comparisonResults: jsonb("comparison_results"), // Stores RFQ vs PO comparison
+  comparisonStatus: varchar("comparison_status", { length: 50 }), // matched, mismatched, pending
+
+  // Workflow Status
+  status: varchar("status", { length: 50 }).default("rfq_received"),
+  // rfq_received, quoted, po_received, in_verification, verified, shipped
+
+  // Dates
+  rfqReceivedAt: timestamp("rfq_received_at"),
+  quoteSentAt: timestamp("quote_sent_at"),
+  poReceivedAt: timestamp("po_received_at"),
+  verifiedAt: timestamp("verified_at"),
+  shippedAt: timestamp("shipped_at"),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  statusIdx: index("idx_projects_status").on(table.status),
+  customerIdx: index("idx_projects_customer").on(table.customerName),
+  createdAtIdx: index("idx_projects_created_at").on(table.createdAt),
+}));
+
+// ===============================
 // GOVERNMENT VERIFICATION TABLES
 // ===============================
 
