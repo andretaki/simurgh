@@ -9,7 +9,6 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
   LogOut,
   Menu,
   X,
@@ -21,7 +20,6 @@ import {
 const navItems = [
   { title: "Dashboard", href: "/", icon: Home },
   { title: "Projects", href: "/projects", icon: FolderOpen },
-  { title: "Orders", href: "/orders", icon: Package },
   { title: "Settings", href: "/settings", icon: Settings },
 ];
 
@@ -41,19 +39,15 @@ export default function Sidebar() {
       {/* Mobile Menu Button */}
       <button
         onClick={() => setIsMobileOpen(!isMobileOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-white/80 backdrop-blur-md shadow-lg hover:shadow-xl transition-all"
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded bg-white shadow-md"
       >
-        {isMobileOpen ? (
-          <X className="h-6 w-6 text-gray-700" />
-        ) : (
-          <Menu className="h-6 w-6 text-gray-700" />
-        )}
+        {isMobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </button>
 
       {/* Mobile Overlay */}
       {isMobileOpen && (
         <div
-          className="lg:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
+          className="lg:hidden fixed inset-0 bg-black/40 z-40"
           onClick={() => setIsMobileOpen(false)}
         />
       )}
@@ -61,117 +55,87 @@ export default function Sidebar() {
       {/* Sidebar */}
       <aside
         className={`
-          fixed top-0 left-0 h-full bg-white/90 backdrop-blur-xl border-r border-gray-200/50 shadow-2xl z-40
-          transition-all duration-300 ease-in-out
-          ${isCollapsed ? "w-20" : "w-64"}
+          fixed top-0 left-0 h-full bg-slate-900 text-white z-40
+          transition-all duration-200
+          ${isCollapsed ? "w-16" : "w-56"}
           ${isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         `}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200/50">
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl blur-lg opacity-50 group-hover:opacity-75 transition-opacity" />
-              <div className="relative p-2 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl shadow-lg">
-                <Sparkles className="h-6 w-6 text-white" />
-              </div>
+        <div className="flex items-center justify-between p-4 border-b border-slate-700">
+          <Link href="/" className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-amber-500 rounded flex items-center justify-center font-bold text-slate-900">
+              S
             </div>
             {!isCollapsed && (
               <div>
-                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  Simurgh
-                </h1>
-                <p className="text-xs text-gray-500">Gov Order Verification</p>
+                <h1 className="font-bold text-white">Simurgh</h1>
+                <p className="text-xs text-slate-400">Gov Verification</p>
               </div>
             )}
           </Link>
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="hidden lg:block p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            className="hidden lg:block p-1 rounded hover:bg-slate-800"
           >
             {isCollapsed ? (
-              <ChevronRight className="h-5 w-5 text-gray-600" />
+              <ChevronRight className="h-4 w-4 text-slate-400" />
             ) : (
-              <ChevronLeft className="h-5 w-5 text-gray-600" />
+              <ChevronLeft className="h-4 w-4 text-slate-400" />
             )}
           </button>
         </div>
 
         {/* Quick Action */}
-        <div className="p-4 border-b border-gray-200/50">
-          <Link href="/orders">
+        <div className="p-3 border-b border-slate-700">
+          <Link href="/projects">
             <Button
               size={isCollapsed ? "icon" : "default"}
-              variant="gradient"
-              className="w-full group"
+              className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-semibold"
             >
-              <Plus className={`h-4 w-4 ${!isCollapsed && "mr-2"} group-hover:rotate-90 transition-transform`} />
-              {!isCollapsed && <span>New Order</span>}
+              <Plus className={`h-4 w-4 ${!isCollapsed && "mr-2"}`} />
+              {!isCollapsed && <span>New Project</span>}
             </Button>
           </Link>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto p-4">
-          <div className="space-y-2">
-            {navItems.map((item) => {
-              const active = isActive(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`
-                    flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative overflow-hidden
-                    ${active
-                      ? "bg-gradient-to-r from-purple-50 to-blue-50 shadow-md"
-                      : "hover:bg-gray-50"
-                    }
-                  `}
-                >
-                  {active && (
-                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-purple-500 to-blue-500" />
-                  )}
-
-                  <div
-                    className={`
-                    relative p-2 rounded-lg transition-all duration-200
-                    ${active
-                      ? "bg-gradient-to-r from-purple-500 to-blue-500 shadow-lg"
-                      : "bg-gray-100 group-hover:bg-gray-200"
-                    }
-                  `}
-                  >
-                    <item.icon className={`h-5 w-5 ${active ? "text-white" : "text-gray-600"}`} />
-                  </div>
-
-                  {!isCollapsed && (
-                    <span className={`font-medium ${active ? "text-gray-900" : "text-gray-700"}`}>
-                      {item.title}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
+        <nav className="flex-1 p-2">
+          {navItems.map((item) => {
+            const active = isActive(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`
+                  flex items-center gap-3 px-3 py-2 rounded mb-1 transition-colors
+                  ${active
+                    ? "bg-slate-800 text-white"
+                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                  }
+                `}
+              >
+                <item.icon className="h-5 w-5" />
+                {!isCollapsed && <span className="font-medium">{item.title}</span>}
+              </Link>
+            );
+          })}
         </nav>
 
         {/* User Section */}
-        <div className="p-4 border-t border-gray-200/50">
+        <div className="p-3 border-t border-slate-700">
           <div className={`flex items-center gap-3 ${isCollapsed ? "justify-center" : ""}`}>
-            <div className="relative">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 flex items-center justify-center text-white font-bold shadow-lg">
-                AC
-              </div>
-              <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
+            <div className="w-8 h-8 rounded bg-slate-700 flex items-center justify-center text-sm font-bold">
+              AC
             </div>
             {!isCollapsed && (
               <>
                 <div className="flex-1">
-                  <p className="text-sm font-semibold text-gray-900">Alliance Chemical</p>
-                  <p className="text-xs text-gray-500">Admin</p>
+                  <p className="text-sm font-medium">Alliance Chemical</p>
+                  <p className="text-xs text-slate-500">Admin</p>
                 </div>
-                <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
-                  <LogOut className="h-4 w-4 text-gray-600" />
+                <button className="p-1.5 rounded hover:bg-slate-800">
+                  <LogOut className="h-4 w-4 text-slate-400" />
                 </button>
               </>
             )}
@@ -180,7 +144,7 @@ export default function Sidebar() {
       </aside>
 
       {/* Spacer */}
-      <div className={`hidden lg:block transition-all duration-300 ${isCollapsed ? "lg:w-20" : "lg:w-64"}`} />
+      <div className={`hidden lg:block transition-all duration-200 ${isCollapsed ? "lg:w-16" : "lg:w-56"}`} />
     </>
   );
 }

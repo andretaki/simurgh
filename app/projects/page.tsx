@@ -32,12 +32,12 @@ interface Project {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  rfq_received: { label: "RFQ Received", color: "bg-blue-100 text-blue-700", icon: <FileText className="h-3 w-3" /> },
-  quoted: { label: "Quote Sent", color: "bg-purple-100 text-purple-700", icon: <FileText className="h-3 w-3" /> },
-  po_received: { label: "PO Received", color: "bg-yellow-100 text-yellow-700", icon: <Package className="h-3 w-3" /> },
-  in_verification: { label: "In Verification", color: "bg-orange-100 text-orange-700", icon: <Clock className="h-3 w-3" /> },
-  verified: { label: "Verified", color: "bg-green-100 text-green-700", icon: <CheckCircle className="h-3 w-3" /> },
-  shipped: { label: "Shipped", color: "bg-gray-100 text-gray-700", icon: <Package className="h-3 w-3" /> },
+  rfq_received: { label: "RFQ Received", color: "bg-slate-100 text-slate-700", icon: <FileText className="h-3 w-3" /> },
+  quoted: { label: "Quote Sent", color: "bg-slate-200 text-slate-800", icon: <FileText className="h-3 w-3" /> },
+  po_received: { label: "PO Received", color: "bg-amber-100 text-amber-800", icon: <Package className="h-3 w-3" /> },
+  in_verification: { label: "In Verification", color: "bg-amber-200 text-amber-900", icon: <Clock className="h-3 w-3" /> },
+  verified: { label: "Verified", color: "bg-green-100 text-green-800", icon: <CheckCircle className="h-3 w-3" /> },
+  shipped: { label: "Shipped", color: "bg-slate-700 text-white", icon: <Package className="h-3 w-3" /> },
 };
 
 export default function ProjectsPage() {
@@ -120,7 +120,7 @@ export default function ProjectsPage() {
   const getStatusBadge = (status: string) => {
     const config = STATUS_CONFIG[status] || STATUS_CONFIG.rfq_received;
     return (
-      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${config.color}`}>
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${config.color}`}>
         {config.icon}
         {config.label}
       </span>
@@ -130,14 +130,14 @@ export default function ProjectsPage() {
   const getComparisonBadge = (status: string | null) => {
     if (!status) return null;
     const config: Record<string, { color: string; icon: React.ReactNode }> = {
-      matched: { color: "bg-green-100 text-green-700", icon: <CheckCircle className="h-3 w-3" /> },
-      mismatched: { color: "bg-red-100 text-red-700", icon: <AlertTriangle className="h-3 w-3" /> },
-      partial: { color: "bg-yellow-100 text-yellow-700", icon: <AlertTriangle className="h-3 w-3" /> },
+      matched: { color: "bg-green-100 text-green-800", icon: <CheckCircle className="h-3 w-3" /> },
+      mismatched: { color: "bg-red-100 text-red-800", icon: <AlertTriangle className="h-3 w-3" /> },
+      partial: { color: "bg-amber-100 text-amber-800", icon: <AlertTriangle className="h-3 w-3" /> },
     };
     const c = config[status];
     if (!c) return null;
     return (
-      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${c.color}`}>
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${c.color}`}>
         {c.icon}
         {status}
       </span>
@@ -149,9 +149,13 @@ export default function ProjectsPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Projects</h1>
-          <p className="text-gray-500">Manage RFQs, quotes, and purchase orders</p>
+          <p className="text-slate-500">Manage RFQs, quotes, and purchase orders</p>
         </div>
-        <Button onClick={createProject} disabled={creating}>
+        <Button
+          onClick={createProject}
+          disabled={creating}
+          className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-semibold"
+        >
           <Plus className="h-4 w-4 mr-2" />
           {creating ? "Creating..." : "New Project"}
         </Button>
@@ -159,49 +163,52 @@ export default function ProjectsPage() {
 
       {/* Search */}
       <div className="relative mb-6">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
         <Input
           placeholder="Search projects..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
+          className="pl-10 border-slate-300"
         />
       </div>
 
       {/* Projects List */}
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle className="flex items-center gap-2">
-            <FolderOpen className="h-5 w-5 text-blue-600" />
+      <Card className="border-slate-200">
+        <CardHeader className="border-b border-slate-200">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <FolderOpen className="h-5 w-5 text-slate-600" />
             Projects ({filteredProjects.length})
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-600"></div>
             </div>
           ) : filteredProjects.length === 0 ? (
             <div className="text-center py-12">
-              <FolderOpen className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No projects yet</h3>
-              <p className="text-gray-500 mb-4">Create a project to start tracking RFQs and POs</p>
-              <Button onClick={createProject}>
+              <FolderOpen className="h-12 w-12 text-slate-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">No projects yet</h3>
+              <p className="text-slate-500 mb-4">Create a project to start tracking RFQs and POs</p>
+              <Button
+                onClick={createProject}
+                className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-semibold"
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Create First Project
               </Button>
             </div>
           ) : (
-            <div className="divide-y">
+            <div className="divide-y divide-slate-100">
               {filteredProjects.map((project) => (
                 <Link
                   key={project.id}
                   href={`/projects/${project.id}`}
-                  className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+                  className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="p-2 bg-blue-100 rounded-lg">
-                      <FolderOpen className="h-5 w-5 text-blue-600" />
+                    <div className="p-2 bg-slate-100 rounded">
+                      <FolderOpen className="h-5 w-5 text-slate-600" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -209,7 +216,7 @@ export default function ProjectsPage() {
                         {getStatusBadge(project.status)}
                         {getComparisonBadge(project.comparisonStatus)}
                       </div>
-                      <div className="text-sm text-gray-500 mt-1">
+                      <div className="text-sm text-slate-500 mt-1">
                         {project.customerName && <span>{project.customerName} | </span>}
                         {project.rfqNumber && <span>RFQ: {project.rfqNumber} | </span>}
                         {project.poNumber && <span>PO: {project.poNumber} | </span>}
@@ -221,16 +228,16 @@ export default function ProjectsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-gray-500">
+                    <span className="text-sm text-slate-500">
                       {new Date(project.createdAt).toLocaleDateString()}
                     </span>
                     <button
                       onClick={(e) => deleteProject(e, project.id)}
-                      className="p-1.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-600"
+                      className="p-1.5 rounded hover:bg-red-100 text-slate-400 hover:text-red-600"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
-                    <ArrowRight className="h-4 w-4 text-gray-400" />
+                    <ArrowRight className="h-4 w-4 text-slate-400" />
                   </div>
                 </Link>
               ))}
@@ -240,16 +247,14 @@ export default function ProjectsPage() {
       </Card>
 
       {/* Workflow Legend */}
-      <div className="mt-6 p-4 bg-white rounded-lg border">
-        <h3 className="font-semibold mb-3">Workflow</h3>
-        <div className="flex flex-wrap gap-4 text-sm">
+      <div className="mt-6 p-4 bg-slate-50 rounded border border-slate-200">
+        <h3 className="font-semibold mb-3 text-slate-700">Workflow</h3>
+        <div className="flex flex-wrap gap-3 text-sm">
           {Object.entries(STATUS_CONFIG).map(([key, config]) => (
-            <div key={key} className="flex items-center gap-2">
-              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${config.color}`}>
-                {config.icon}
-                {config.label}
-              </span>
-            </div>
+            <span key={key} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${config.color}`}>
+              {config.icon}
+              {config.label}
+            </span>
           ))}
         </div>
       </div>

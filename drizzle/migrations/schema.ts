@@ -8,37 +8,37 @@ export const companyProfiles = simurghSchema.table("company_profiles", {
   id: serial("id").primaryKey(),
   companyName: varchar("company_name", { length: 255 }).notNull(),
   cageCode: varchar("cage_code", { length: 50 }),
-  dunsNumber: varchar("duns_number", { length: 50 }),
-  addressLine1: varchar("address_line1", { length: 255 }),
-  addressLine2: varchar("address_line2", { length: 255 }),
-  city: varchar("city", { length: 100 }),
-  state: varchar("state", { length: 50 }),
-  zipCode: varchar("zip_code", { length: 20 }),
-  country: varchar("country", { length: 100 }),
-  pocName: varchar("poc_name", { length: 255 }),
-  pocTitle: varchar("poc_title", { length: 255 }),
-  pocEmail: varchar("poc_email", { length: 255 }),
-  pocPhone: varchar("poc_phone", { length: 50 }),
-  
+  samUei: varchar("sam_uei", { length: 50 }),
+  samRegistered: boolean("sam_registered").default(false),
+  naicsCode: varchar("naics_code", { length: 50 }),
+  naicsSize: varchar("naics_size", { length: 100 }),
+  employeeCount: varchar("employee_count", { length: 50 }),
+  businessType: varchar("business_type", { length: 50 }),
+
   // Certifications
-  smallBusiness: boolean("small_business").default(false),
+  smallDisadvantaged: boolean("small_disadvantaged").default(false),
   womanOwned: boolean("woman_owned").default(false),
   veteranOwned: boolean("veteran_owned").default(false),
+  serviceDisabledVetOwned: boolean("service_disabled_vet_owned").default(false),
   hubZone: boolean("hub_zone").default(false),
-  eightA: boolean("eight_a").default(false),
-  
-  // Business Details
-  naicsCode: varchar("naics_code", { length: 50 }),
-  taxId: varchar("tax_id", { length: 50 }),
-  
+  historicallyUnderutilized: boolean("historically_underutilized").default(false),
+  alaskaNativeCorp: boolean("alaska_native_corp").default(false),
+
   // Payment & Terms
-  paymentTerms: varchar("payment_terms", { length: 100 }),
-  shippingTerms: varchar("shipping_terms", { length: 100 }),
-  
-  // Additional Info
-  websiteUrl: varchar("website_url", { length: 255 }),
-  capabilities: text("capabilities"),
-  
+  defaultPaymentTerms: varchar("default_payment_terms", { length: 100 }),
+  defaultPaymentTermsOther: varchar("default_payment_terms_other", { length: 255 }),
+  defaultFob: varchar("default_fob", { length: 50 }),
+  defaultPurchaseOrderMin: numeric("default_purchase_order_min", { precision: 10, scale: 2 }),
+  noFreightAdder: boolean("no_freight_adder").default(true),
+  defaultPpaByVendor: boolean("default_ppa_by_vendor").default(false),
+  countryOfOrigin: varchar("country_of_origin", { length: 50 }).default('USA'),
+
+  // Contact Info
+  contactPerson: varchar("contact_person", { length: 255 }),
+  contactEmail: varchar("contact_email", { length: 255 }),
+  contactPhone: varchar("contact_phone", { length: 50 }),
+  address: text("address"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow()
 });

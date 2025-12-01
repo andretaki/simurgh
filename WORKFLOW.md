@@ -4,6 +4,8 @@
 
 Simurgh is a web application for **Alliance Chemical** to digitize and streamline government purchase order workflows. It replaces manual paper-based processes with AI-powered document extraction, RFQ/PO correlation, quality sheets, and label generation.
 
+**All work flows through Projects.** Every deal starts with an RFQ, proceeds to a quote, then PO receipt, and finally order verification/shipment.
+
 ---
 
 ## Company Information
@@ -25,14 +27,13 @@ Simurgh is a web application for **Alliance Chemical** to digitize and streamlin
 │                         SIMURGH                                  │
 ├─────────────────────────────────────────────────────────────────┤
 │  Frontend (Next.js 14)                                          │
-│  ├── Dashboard (/dashboard)                                     │
-│  ├── Projects (/projects) ─── Workspace for RFQ + PO            │
-│  ├── Orders (/orders) ─────── Order verification workflow       │
+│  ├── Dashboard (/)                                              │
+│  ├── Projects (/projects) ─── Full RFQ → Ship workflow          │
 │  └── Settings (/settings)                                       │
 ├─────────────────────────────────────────────────────────────────┤
 │  Backend (Next.js API Routes)                                   │
 │  ├── /api/projects/* ──────── Project CRUD + AI comparison      │
-│  ├── /api/orders/* ────────── Order CRUD + labels               │
+│  ├── /api/orders/* ────────── Order data (within projects)      │
 │  ├── /api/rfq/* ───────────── RFQ processing                    │
 │  └── /api/health ──────────── System status                     │
 ├─────────────────────────────────────────────────────────────────┤
@@ -46,90 +47,73 @@ Simurgh is a web application for **Alliance Chemical** to digitize and streamlin
 
 ---
 
-## Core Workflows
+## Workflow
 
-### Workflow 1: Project-Based (RFQ → PO Correlation)
-
-Use **Projects** to track a complete deal from RFQ to shipment.
+Everything goes through **Projects**. One project = one deal from RFQ to shipment.
 
 ```
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│  Create  │───▶│  Upload  │───▶│  Upload  │───▶│    AI    │───▶│  Order   │
-│ Project  │    │   RFQ    │    │    PO    │    │ Compare  │    │ Workflow │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│  Upload  │───▶│   Send   │───▶│  Upload  │───▶│    AI    │───▶│  Verify  │───▶│   Ship   │
+│   RFQ    │    │  Quote   │    │    PO    │    │ Compare  │    │  Order   │    │          │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
 ```
 
-**Steps:**
-1. **Create Project** - New workspace for a deal
-2. **Upload RFQ** - AI extracts: RFQ#, NSN, product, quantity, customer
-3. **Send Quote** - Generate and send quote response
-4. **Upload PO** - AI extracts: PO#, NSN, product, quantity, ship-to
-5. **AI Comparison** - Automatically compares RFQ vs PO:
-   - ✅ **Matches** - Fields that align
-   - ❌ **Mismatches** - Discrepancies (with severity: high/medium/low)
-   - ⚠️ **Missing** - Fields in one document but not the other
-   - 📋 **Recommendations** - Action items
-6. **Proceed to Order Workflow** - Quality sheet, labels, verification
+### Phase 1: RFQ Received
+- Create new project
+- Upload RFQ PDF
+- AI extracts: RFQ#, NSN, product, quantity, customer, due date
 
-### Workflow 2: Order Verification (PO Processing)
+### Phase 2: Quote Sent
+- Review extracted RFQ data
+- Generate and send quote response
+- Mark project as "quoted"
 
-Use **Orders** for direct PO processing without RFQ correlation.
+### Phase 3: PO Received
+- Upload PO PDF when customer responds
+- AI extracts: PO#, NSN, product, quantity, price, ship-to address
+- **AI Comparison** runs automatically:
+  - ✅ **Matches** - Fields that align between RFQ and PO
+  - ❌ **Mismatches** - Discrepancies (severity: high/medium/low)
+  - ⚠️ **Missing** - Fields in one doc but not the other
+  - 📋 **Recommendations** - Action items
 
-```
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│  Upload  │───▶│  Review  │───▶│ Quality  │───▶│ Generate │───▶│  Verify  │
-│    PO    │    │    PO    │    │  Sheet   │    │  Labels  │    │ & Sign   │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
-```
-
-**Step 1: Upload PO**
-- Drag-and-drop PDF upload
-- Claude AI extracts:
-  - PO Number
-  - Product Name & Grade
-  - NSN (National Stock Number)
-  - Quantity & Unit of Measure
-  - Unit Price
-  - Specification (MIL-STD)
+### Phase 4: Order Verification
+- **Quality Sheet (SAIC)**
+  - PO Number (auto-filled)
+  - Lot Number (manual entry, e.g., "50415AL")
+  - NSN (auto-filled)
+  - Quantity (auto-filled)
+  - Product Type
   - Ship To Address
+  - Assembly Date (MM/DD)
+  - Inspection Date (MM/DD)
+  - MHM Date (MM/DD)
+  - CAGE Code (always 1LT50)
+  - Container Type (e.g., "12 X 1 QUART POLY BOTTLES")
 
-**Step 2: Review PO**
-- Verify extracted data
-- Make corrections if needed
-
-**Step 3: Quality Sheet (SAIC)**
-- PO Number (auto-filled)
-- Lot Number (manual entry, e.g., "50415AL")
-- NSN (auto-filled)
-- Quantity (auto-filled)
-- Product Type
-- Ship To Address
-- Assembly Date (MM/DD)
-- Inspection Date (MM/DD)
-- MHM Date (MM/DD)
-- CAGE Code (always 1LT50)
-- Container Type (e.g., "12 X 1 QUART POLY BOTTLES")
-
-**Step 4: Generate Labels**
+- **Generate Labels**
 
 | Label Type | Size | Contents |
 |------------|------|----------|
-| Box Label | 4×6 inches | Product, Grade, Spec, NSN (barcode), CAGE, PO#, Lot#, Qty, Weight, Dates, Container Type, Hazard Symbols, Manufacturer Info |
-| Bottle Label | 3×4 inches | Same as box, individual container qty/weight |
+| Box Label | 4x6 inches | Product, Grade, Spec, NSN (barcode), CAGE, PO#, Lot#, Qty, Weight, Dates, Container Type, Hazard Symbols, Manufacturer Info |
+| Bottle Label | 3x4 inches | Same as box, individual container qty/weight |
 
-**Step 5: Verify & Approve**
-Checklist:
-- [ ] PO Number verified
-- [ ] Product name matches
-- [ ] NSN is correct
-- [ ] Quantity verified
-- [ ] Lot number assigned
-- [ ] Ship to address verified
-- [ ] Box label reviewed
-- [ ] Bottle label reviewed
-- [ ] Hazard symbols correct
+- **Verification Checklist**
+  - [ ] PO Number verified
+  - [ ] Product name matches
+  - [ ] NSN is correct
+  - [ ] Quantity verified
+  - [ ] Lot number assigned
+  - [ ] Ship to address verified
+  - [ ] Box label reviewed
+  - [ ] Bottle label reviewed
+  - [ ] Hazard symbols correct
 
-Digital signature: Verifier enters full name
+- **Digital Signature** - Verifier enters full name
+
+### Phase 5: Shipped
+- Mark as shipped
+- Project complete
 
 ---
 
@@ -137,20 +121,20 @@ Digital signature: Verifier enters full name
 
 | Symbol | Name | File |
 |--------|------|------|
-| 🔥 | Flammable | flamme.png |
-| ⚗️ | Corrosive | acid_red.png |
-| ⚠️ | Irritant | exclam.png |
-| ☠️ | Toxic | skull.png |
-| 🫁 | Health Hazard | silhouete.png |
-| 🔴 | Oxidizer | rondflam.png |
-| 🐟 | Environmental | Aquatic-pollut-red.png |
+| Flammable | flamme.png |
+| Corrosive | acid_red.png |
+| Irritant | exclam.png |
+| Toxic | skull.png |
+| Health Hazard | silhouete.png |
+| Oxidizer | rondflam.png |
+| Environmental | Aquatic-pollut-red.png |
 
 ---
 
 ## Database Schema
 
 ### `projects`
-Groups RFQ, Quote, PO, and verification together.
+Main table - one row per deal.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -174,10 +158,10 @@ Groups RFQ, Quote, PO, and verification together.
 | verifiedAt | timestamp | Verification date |
 | shippedAt | timestamp | Ship date |
 
-**Status values:** `rfq_received` → `quoted` → `po_received` → `in_verification` → `verified` → `shipped`
+**Status flow:** `rfq_received` → `quoted` → `po_received` → `in_verification` → `verified` → `shipped`
 
 ### `government_orders`
-Main order/PO tracking table.
+PO data extracted from uploaded documents.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -201,8 +185,6 @@ Main order/PO tracking table.
 | originalPdfS3Key | varchar(500) | S3 key for uploaded PO |
 | extractedData | jsonb | Raw AI extraction |
 | status | varchar(50) | Workflow status |
-
-**Status values:** `pending` → `quality_sheet_created` → `labels_generated` → `verified` → `shipped`
 
 ### `quality_sheets`
 SAIC Quality Sheet data.
@@ -236,7 +218,6 @@ Track generated box and bottle labels.
 | labelType | varchar(20) | box / bottle |
 | labelSize | varchar(10) | 4x6 / 3x4 |
 | productName | varchar(255) | Product name |
-| ... | ... | All label fields |
 | pdfS3Key | varchar(500) | S3 key for PDF |
 | printCount | integer | Times printed |
 
@@ -282,15 +263,11 @@ Quote responses to RFQs.
 | DELETE | /api/projects/[id] | Delete project |
 | POST | /api/projects/[id]/compare | Run AI RFQ vs PO comparison |
 
-### Orders
+### Orders (within Projects)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | /api/orders | List all orders |
-| POST | /api/orders | Create order |
 | GET | /api/orders/[id] | Get order details |
 | PUT | /api/orders/[id] | Update order |
-| DELETE | /api/orders/[id] | Delete order |
-| POST | /api/orders/upload | Upload PO PDF (AI extraction) |
 | POST | /api/orders/[id]/quality-sheet | Save quality sheet |
 | POST | /api/orders/[id]/labels | Generate labels |
 
@@ -298,8 +275,6 @@ Quote responses to RFQs.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | /api/rfq/extract | Upload & extract RFQ |
-| POST | /api/rfq/search | Search RFQs |
-| GET | /api/rfqSubmissions | List completed submissions |
 
 ---
 
@@ -311,10 +286,7 @@ simurgh/
 │   ├── page.tsx                    # Dashboard
 │   ├── projects/
 │   │   ├── page.tsx                # Projects list
-│   │   └── [id]/page.tsx           # Project detail + AI comparison
-│   ├── orders/
-│   │   ├── page.tsx                # Orders list + upload
-│   │   └── [id]/page.tsx           # Order verification wizard
+│   │   └── [id]/page.tsx           # Project detail + verification
 │   ├── settings/page.tsx           # Company settings
 │   └── api/
 │       ├── projects/
@@ -323,15 +295,12 @@ simurgh/
 │       │       ├── route.ts        # GET/PUT/DELETE project
 │       │       └── compare/route.ts # AI comparison
 │       ├── orders/
-│       │   ├── route.ts            # GET/POST orders
-│       │   ├── upload/route.ts     # Upload with AI extraction
 │       │   └── [id]/
-│       │       ├── route.ts        # GET/PUT/DELETE order
+│       │       ├── route.ts        # GET/PUT order
 │       │       ├── quality-sheet/route.ts
 │       │       └── labels/route.ts
 │       ├── rfq/
-│       │   ├── extract/route.ts    # RFQ extraction
-│       │   └── search/route.ts     # Search RFQs
+│       │   └── extract/route.ts    # RFQ extraction
 │       └── health/route.ts         # System health
 ├── components/
 │   ├── navigation/sidebar.tsx      # Main navigation
@@ -391,42 +360,25 @@ ANTHROPIC_API_KEY=...
 
 ## Quick Start
 
-1. **Create a Project** (for RFQ → PO tracking)
-   - Go to `/projects` → Click "New Project"
-   - Upload RFQ → Upload PO → Run AI Comparison
-   - Proceed to order workflow
-
-2. **Process an Order** (direct PO processing)
-   - Go to `/orders` → Drag-drop PO PDF
-   - Review extracted data
-   - Fill quality sheet
-   - Generate labels
-   - Verify and sign
+1. Go to `/projects`
+2. Click **New Project**
+3. Upload RFQ → Send Quote → Upload PO → AI Compare → Verify → Ship
 
 ---
 
-## Status Legend
+## Project Status Legend
 
-### Project Status
 | Status | Description |
 |--------|-------------|
 | rfq_received | RFQ uploaded, awaiting quote |
 | quoted | Quote sent to customer |
-| po_received | PO received from customer |
+| po_received | PO received, AI comparison done |
 | in_verification | Quality sheet/labels in progress |
 | verified | All steps complete, ready to ship |
 | shipped | Order shipped |
 
-### Order Status
-| Status | Description |
-|--------|-------------|
-| pending | PO uploaded, awaiting review |
-| quality_sheet_created | Quality sheet filled |
-| labels_generated | Labels ready to print |
-| verified | Checklist complete, signed |
-| shipped | Order shipped |
-
 ### Comparison Status
+
 | Status | Description |
 |--------|-------------|
 | matched | RFQ and PO fields align |

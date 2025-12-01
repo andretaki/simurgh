@@ -227,11 +227,14 @@ export async function POST(
       yPosition -= 20;
 
       const certifications = [];
-      if (profile.smallBusiness) certifications.push('Small Business');
+      if (profile.businessType === 'Small') certifications.push('Small Business');
+      if (profile.smallDisadvantaged) certifications.push('Small Disadvantaged Business');
       if (profile.womanOwned) certifications.push('Woman-Owned Business');
       if (profile.veteranOwned) certifications.push('Veteran-Owned Business');
+      if (profile.serviceDisabledVetOwned) certifications.push('Service-Disabled Veteran-Owned');
       if (profile.hubZone) certifications.push('HUBZone Certified');
-      if (profile.eightA) certifications.push('8(a) Certified');
+      if (profile.historicallyUnderutilized) certifications.push('Historically Underutilized');
+      if (profile.alaskaNativeCorp) certifications.push('Alaska Native Corporation');
 
       if (certifications.length > 0) {
         page.drawText(certifications.join(', '), {

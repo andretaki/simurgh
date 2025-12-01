@@ -16,6 +16,7 @@ interface CompanyProfileForm {
   samRegistered: boolean;
   naicsCode: string;
   naicsSize: string;
+  employeeCount: string;
   businessType: string;
   smallDisadvantaged: boolean;
   womanOwned: boolean;
@@ -28,8 +29,10 @@ interface CompanyProfileForm {
   defaultPaymentTermsOther: string;
   defaultFob: string;
   defaultPurchaseOrderMin: string;
+  noFreightAdder: boolean;
   defaultComplimentaryFreight: boolean;
   defaultPpaByVendor: boolean;
+  countryOfOrigin: string;
   contactPerson: string;
   contactEmail: string;
   contactPhone: string;
@@ -37,12 +40,13 @@ interface CompanyProfileForm {
 }
 
 const defaultProfile: CompanyProfileForm = {
-  companyName: "",
-  cageCode: "",
+  companyName: "Alliance Chemical",
+  cageCode: "1LT50",
   samUei: "",
-  samRegistered: false,
-  naicsCode: "",
-  naicsSize: "",
+  samRegistered: true,
+  naicsCode: "324191",
+  naicsSize: "<500 employees",
+  employeeCount: "<500",
   businessType: "Small",
   smallDisadvantaged: false,
   womanOwned: false,
@@ -53,13 +57,15 @@ const defaultProfile: CompanyProfileForm = {
   alaskaNativeCorp: false,
   defaultPaymentTerms: "Net 30",
   defaultPaymentTermsOther: "",
-  defaultFob: "Destination",
+  defaultFob: "Origin",
   defaultPurchaseOrderMin: "",
-  defaultComplimentaryFreight: false,
+  noFreightAdder: true,
+  defaultComplimentaryFreight: true,
   defaultPpaByVendor: false,
-  contactPerson: "",
-  contactEmail: "",
-  contactPhone: "",
+  countryOfOrigin: "USA",
+  contactPerson: "Hossein Taki",
+  contactEmail: "alliance@alliancechemical.com",
+  contactPhone: "512-784-3222",
   address: "",
 };
 
@@ -291,6 +297,39 @@ export default function CompanySettingsPage() {
                     <option value="Large">Large</option>
                   </select>
                 </div>
+                <div>
+                  <label htmlFor="employeeCount" className="block text-sm font-medium text-gray-700 mb-1">
+                    Employee Count
+                  </label>
+                  <select
+                    id="employeeCount"
+                    name="employeeCount"
+                    value={profile.employeeCount}
+                    onChange={handleChange}
+                    className="w-full border rounded px-3 py-2 text-sm"
+                  >
+                    <option value="<500">&lt;500</option>
+                    <option value="501-750">501-750</option>
+                    <option value="751-1000">751-1000</option>
+                    <option value="1001-1500">1001-1500</option>
+                    <option value=">1500">&gt;1500</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="countryOfOrigin" className="block text-sm font-medium text-gray-700 mb-1">
+                    Default Country of Origin
+                  </label>
+                  <select
+                    id="countryOfOrigin"
+                    name="countryOfOrigin"
+                    value={profile.countryOfOrigin}
+                    onChange={handleChange}
+                    className="w-full border rounded px-3 py-2 text-sm"
+                  >
+                    <option value="USA">USA</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
               </div>
             </section>
 
@@ -430,15 +469,16 @@ export default function CompanySettingsPage() {
                   />
                 </div>
                 <div className="md:col-span-2">
+                  <p className="text-sm font-medium text-gray-700 mb-2">Shipping Cost Options</p>
                   <div className="flex items-center space-x-6">
                     <label className="flex items-center space-x-2">
                       <input
                         type="checkbox"
-                        name="defaultComplimentaryFreight"
-                        checked={profile.defaultComplimentaryFreight}
+                        name="noFreightAdder"
+                        checked={profile.noFreightAdder}
                         onChange={handleChange}
                       />
-                      <span className="text-sm">Default Complimentary Freight</span>
+                      <span className="text-sm">No Freight Adder (Complimentary)</span>
                     </label>
                     <label className="flex items-center space-x-2">
                       <input
@@ -447,7 +487,7 @@ export default function CompanySettingsPage() {
                         checked={profile.defaultPpaByVendor}
                         onChange={handleChange}
                       />
-                      <span className="text-sm">Default Prepay & Add by Vendor</span>
+                      <span className="text-sm">Prepay & Add by Vendor</span>
                     </label>
                   </div>
                 </div>
