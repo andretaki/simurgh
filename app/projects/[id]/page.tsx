@@ -99,37 +99,90 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
 
     setUploadingRfq(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("projectId", projectId);
-
-      const response = await fetch("/api/rfq/extract", {
+      // Step 1: Get presigned URL
+      console.log("RFQ upload: step 1 getting presigned URL", { projectId, fileName: file.name });
+      const uploadUrlResponse = await fetch("/api/s3/upload", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type || "application/pdf",
+        }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        // Update project with RFQ reference
-        await fetch(`/api/projects/${projectId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            rfqDocumentId: data.rfqDocument?.id,
-            rfqNumber: data.extractedFields?.rfqNumber,
-            customerName: data.extractedFields?.contractingOffice,
-            status: "rfq_received",
-            rfqReceivedAt: new Date().toISOString(),
-          }),
-        });
-        toast({ title: "RFQ uploaded successfully" });
-        fetchProject();
-      } else {
-        toast({ variant: "destructive", title: "Upload failed" });
+      if (!uploadUrlResponse.ok) {
+        const errText = await uploadUrlResponse.text();
+        console.error("RFQ upload: presign failed", errText);
+        toast({ variant: "destructive", title: "Failed to get upload URL" });
+        return;
       }
+
+      const { url: presignedUrl, key: s3Key } = await uploadUrlResponse.json();
+      console.log("RFQ upload: step 2 uploading to S3", { s3Key, presignedUrl });
+
+      // Step 2: Upload to S3
+      const uploadResponse = await fetch(presignedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/pdf" },
+        body: file,
+      });
+
+      if (!uploadResponse.ok) {
+        const errText = await uploadResponse.text();
+        console.error("RFQ upload: S3 upload failed", errText);
+        toast({ variant: "destructive", title: "Failed to upload file to storage" });
+        return;
+      }
+
+      console.log("RFQ upload: step 3 calling /api/rfq/process", { s3Key });
+
+      // Step 3: Process RFQ
+      const processResponse = await fetch("/api/rfq/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          s3Key,
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type || "application/pdf",
+        }),
+      });
+
+      if (!processResponse.ok) {
+        const errorData = await processResponse.json().catch(() => null);
+        console.error("RFQ upload: process failed", errorData);
+        toast({ variant: "destructive", title: errorData?.error || "RFQ processing failed" });
+        return;
+      }
+
+      const data = await processResponse.json();
+      console.log("RFQ upload: process success", data);
+
+      // Step 4: Update project
+      const updateResponse = await fetch(`/api/projects/${projectId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rfqDocumentId: data.rfqId,
+          rfqNumber: data.extractedFields?.rfqNumber,
+          customerName: data.extractedFields?.contractingOffice,
+          status: "rfq_received",
+        }),
+      });
+
+      if (!updateResponse.ok) {
+        const updateError = await updateResponse.json().catch(() => null);
+        console.error("RFQ upload: project update failed", updateError);
+        toast({ variant: "destructive", title: "Project update failed" });
+        return;
+      }
+
+      console.log("RFQ upload: complete!");
+      toast({ title: "RFQ uploaded successfully" });
+      await fetchProject();
     } catch (error) {
       console.error("RFQ upload failed:", error);
-      toast({ variant: "destructive", title: "Upload failed" });
+      toast({ variant: "destructive", title: "RFQ upload failed" });
     } finally {
       setUploadingRfq(false);
     }
