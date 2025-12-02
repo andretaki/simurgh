@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Download, Save, ChevronDown, ChevronRight, Building2, FileText, Package, DollarSign, Truck, Plus, Trash2, AlertCircle, CheckCircle2, ExternalLink } from "lucide-react";
+import { Loader2, Download, Save, ChevronDown, ChevronRight, Building2, FileText, Package, DollarSign, Truck, Plus, Trash2, AlertCircle, CheckCircle2, ExternalLink, ClipboardList, Calendar, MapPin, Beaker } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 
@@ -390,43 +390,116 @@ export default function RFQFillPage() {
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-5xl mx-auto space-y-6">
 
-        {/* RFQ Header Info */}
-        <Card className="border-blue-200 bg-blue-50/50">
+        {/* RFQ Quick Summary - For Boss to Decide on Bid */}
+        <Card className="border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-xl">RFQ #{extracted.rfqNumber || rfqData.fileName}</CardTitle>
-                <CardDescription>{extracted.contractingOffice || "Government RFQ"}</CardDescription>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600 rounded-lg">
+                  <ClipboardList className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl">RFQ #{extracted.rfqNumber || rfqData.fileName}</CardTitle>
+                  <CardDescription>{extracted.contractingOffice || "ASRC Federal"}</CardDescription>
+                </div>
               </div>
-              {rfqData.s3Url && (
-                <Button variant="outline" size="sm" asChild>
-                  <a href={rfqData.s3Url} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    View Original PDF
-                  </a>
-                </Button>
-              )}
+              <div className="flex gap-2">
+                {extracted.requestedReplyDate && (
+                  <Badge variant="destructive" className="text-sm px-3 py-1">
+                    <Calendar className="h-3 w-3 mr-1" />
+                    Due: {extracted.requestedReplyDate}
+                  </Badge>
+                )}
+                {rfqData.s3Url && (
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={rfqData.s3Url} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      View PDF
+                    </a>
+                  </Button>
+                )}
+              </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">RFQ Date:</span>
-                <p className="font-medium">{extracted.rfqDate || "—"}</p>
+          <CardContent className="space-y-4">
+            {/* Items Summary - The Key Info */}
+            {extracted.items && extracted.items.length > 0 && (
+              <div className="bg-white rounded-lg border p-4">
+                <h3 className="font-semibold text-sm text-muted-foreground mb-3 flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  ITEMS REQUESTED ({extracted.items.length})
+                </h3>
+                <div className="space-y-3">
+                  {extracted.items.map((item: any, idx: number) => (
+                    <div key={idx} className="border-l-4 border-blue-500 pl-3 py-1">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge variant="outline" className="text-xs">Item {item.itemNumber || idx + 1}</Badge>
+                            {item.nsn && <Badge variant="secondary" className="text-xs">NSN: {item.nsn}</Badge>}
+                            {item.hazmat && (
+                              <Badge variant="destructive" className="text-xs">
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                HAZMAT
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="font-medium text-sm">{item.description?.substring(0, 150)}{item.description?.length > 150 ? "..." : ""}</p>
+                          {item.manufacturerPartNumber && (
+                            <p className="text-xs text-muted-foreground mt-1">MFR P/N: {item.manufacturerPartNumber}</p>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-bold text-lg text-blue-600">{item.quantity} {item.unit}</p>
+                          {item.unitOfIssue && item.unitOfIssue !== item.unit && (
+                            <p className="text-xs text-muted-foreground">Unit: {item.unitOfIssue}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div>
-                <span className="text-muted-foreground">Reply By:</span>
-                <p className="font-medium text-red-600">{extracted.requestedReplyDate || "—"}</p>
+            )}
+
+            {/* Quick Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="bg-white rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground">RFQ Date</p>
+                <p className="font-semibold text-sm">{extracted.rfqDate || "—"}</p>
               </div>
-              <div>
-                <span className="text-muted-foreground">Buyer Contact:</span>
-                <p className="font-medium">{extracted.pocName || "—"}</p>
-                <p className="text-xs text-muted-foreground">{extracted.pocEmail}</p>
+              <div className="bg-white rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground">Deliver Before</p>
+                <p className="font-semibold text-sm">{extracted.deliveryBeforeDate || "—"}</p>
               </div>
-              <div>
-                <span className="text-muted-foreground">Phone:</span>
-                <p className="font-medium">{extracted.pocPhone || "—"}</p>
+              <div className="bg-white rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground">Quote Firm Until</p>
+                <p className="font-semibold text-sm">{extracted.quoteFirmUntil || "—"}</p>
               </div>
+              <div className="bg-white rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground">Default FOB</p>
+                <p className="font-semibold text-sm">{extracted.defaultFob || "Origin"}</p>
+              </div>
+              <div className="bg-white rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground">Payment</p>
+                <p className="font-semibold text-sm">{extracted.defaultPaymentTerms || "Net 45"}</p>
+              </div>
+            </div>
+
+            {/* Buyer Contact */}
+            <div className="flex items-center justify-between bg-white rounded-lg border p-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gray-100 rounded-full">
+                  <Building2 className="h-4 w-4 text-gray-600" />
+                </div>
+                <div>
+                  <p className="font-medium text-sm">{extracted.pocName || "Buyer Contact"}</p>
+                  <p className="text-xs text-muted-foreground">{extracted.pocEmail} {extracted.pocPhone && `• ${extracted.pocPhone}`}</p>
+                </div>
+              </div>
+              {extracted.pocFax && (
+                <p className="text-xs text-muted-foreground">Fax: {extracted.pocFax}</p>
+              )}
             </div>
           </CardContent>
         </Card>
