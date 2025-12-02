@@ -19,7 +19,17 @@ import {
   Download,
   Check,
   X,
+  Calendar,
+  User,
+  Phone,
+  Mail,
+  Building2,
+  DollarSign,
+  Truck,
+  ExternalLink,
+  ClipboardList,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 
 interface Project {
@@ -45,11 +55,42 @@ interface ComparisonResults {
   recommendations: string[];
 }
 
+interface ExtractedItem {
+  itemNumber: string;
+  quantity: number;
+  unit: string;
+  description: string;
+  nsn?: string;
+  partNumber?: string;
+  manufacturerPartNumber?: string;
+  unitOfIssue?: string;
+  hazmat?: boolean;
+  unNumber?: string;
+}
+
+interface ExtractedFields {
+  rfqNumber?: string;
+  rfqDate?: string;
+  quoteFirmUntil?: string;
+  requestedReplyDate?: string;
+  deliveryBeforeDate?: string;
+  contractingOffice?: string;
+  primeContractNumber?: string;
+  pocName?: string;
+  pocEmail?: string;
+  pocPhone?: string;
+  pocFax?: string;
+  defaultPaymentTerms?: string;
+  defaultFob?: string;
+  items?: ExtractedItem[];
+}
+
 interface RfqDocument {
   id: number;
   fileName: string;
   rfqNumber: string | null;
-  extractedFields: Record<string, unknown> | null;
+  s3Url?: string;
+  extractedFields: ExtractedFields | null;
 }
 
 interface GovernmentOrder {
@@ -345,16 +386,28 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
             {rfqDocument ? (
               <div className="space-y-3">
                 <div className="p-3 bg-green-50 rounded border border-green-200">
-                  <div className="flex items-center gap-2 text-green-700">
-                    <CheckCircle className="h-4 w-4" />
-                    <span className="font-medium">{rfqDocument.fileName}</span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-green-700">
+                      <CheckCircle className="h-4 w-4" />
+                      <span className="font-medium">{rfqDocument.fileName}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      {rfqDocument.s3Url && (
+                        <a href={rfqDocument.s3Url} target="_blank" rel="noopener noreferrer">
+                          <Button variant="outline" size="sm">
+                            <ExternalLink className="h-3 w-3 mr-1" />
+                            View PDF
+                          </Button>
+                        </a>
+                      )}
+                      <Link href={`/rfq/${rfqDocument.id}/fill`}>
+                        <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                          <DollarSign className="h-3 w-3 mr-1" />
+                          Fill Quote
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
-                  {rfqDocument.rfqNumber && (
-                    <p className="text-sm text-gray-600 mt-1">RFQ#: {rfqDocument.rfqNumber}</p>
-                  )}
-                </div>
-                <div className="text-sm text-gray-500">
-                  <p>Extracted fields available for comparison</p>
                 </div>
               </div>
             ) : (
@@ -427,6 +480,126 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
           </CardContent>
         </Card>
       </div>
+
+      {/* RFQ Quick Summary - Extracted Fields */}
+      {rfqDocument?.extractedFields && (
+        <Card className="mt-6 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600 rounded-lg">
+                  <ClipboardList className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">RFQ #{rfqDocument.extractedFields.rfqNumber || rfqDocument.rfqNumber}</CardTitle>
+                  <p className="text-sm text-muted-foreground">{rfqDocument.extractedFields.contractingOffice || "Government RFQ"}</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {rfqDocument.extractedFields.requestedReplyDate && (
+                  <Badge variant="destructive" className="text-sm px-3 py-1">
+                    <Calendar className="h-3 w-3 mr-1" />
+                    Due: {rfqDocument.extractedFields.requestedReplyDate}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Items Summary */}
+            {rfqDocument.extractedFields.items && rfqDocument.extractedFields.items.length > 0 && (
+              <div className="bg-white rounded-lg border p-4">
+                <h3 className="font-semibold text-sm text-muted-foreground mb-3 flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  ITEMS REQUESTED ({rfqDocument.extractedFields.items.length})
+                </h3>
+                <div className="space-y-3">
+                  {rfqDocument.extractedFields.items.map((item, idx) => (
+                    <div key={idx} className="border-l-4 border-blue-500 pl-3 py-1">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <Badge variant="outline" className="text-xs">Item {item.itemNumber || idx + 1}</Badge>
+                            {item.nsn && <Badge variant="secondary" className="text-xs">NSN: {item.nsn}</Badge>}
+                            {item.manufacturerPartNumber && (
+                              <Badge variant="secondary" className="text-xs">P/N: {item.manufacturerPartNumber}</Badge>
+                            )}
+                            {item.hazmat && (
+                              <Badge variant="destructive" className="text-xs">
+                                <AlertTriangle className="h-3 w-3 mr-1" />
+                                HAZMAT
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="font-medium text-sm">{item.description?.substring(0, 200)}{(item.description?.length || 0) > 200 ? "..." : ""}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-bold text-lg text-blue-600">{item.quantity} {item.unit}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Quick Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="bg-white rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground">RFQ Date</p>
+                <p className="font-semibold text-sm">{rfqDocument.extractedFields.rfqDate || "—"}</p>
+              </div>
+              <div className="bg-white rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground">Deliver Before</p>
+                <p className="font-semibold text-sm">{rfqDocument.extractedFields.deliveryBeforeDate || "—"}</p>
+              </div>
+              <div className="bg-white rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground">Quote Firm Until</p>
+                <p className="font-semibold text-sm">{rfqDocument.extractedFields.quoteFirmUntil || "—"}</p>
+              </div>
+              <div className="bg-white rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground">Default FOB</p>
+                <p className="font-semibold text-sm">{rfqDocument.extractedFields.defaultFob || "Origin"}</p>
+              </div>
+              <div className="bg-white rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground">Payment</p>
+                <p className="font-semibold text-sm">{rfqDocument.extractedFields.defaultPaymentTerms || "Net 45"}</p>
+              </div>
+            </div>
+
+            {/* Buyer Contact */}
+            {(rfqDocument.extractedFields.pocName || rfqDocument.extractedFields.pocEmail) && (
+              <div className="flex items-center justify-between bg-white rounded-lg border p-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gray-100 rounded-full">
+                    <User className="h-4 w-4 text-gray-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">{rfqDocument.extractedFields.pocName || "Buyer Contact"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {rfqDocument.extractedFields.pocEmail}
+                      {rfqDocument.extractedFields.pocPhone && ` • ${rfqDocument.extractedFields.pocPhone}`}
+                    </p>
+                  </div>
+                </div>
+                {rfqDocument.extractedFields.pocFax && (
+                  <p className="text-xs text-muted-foreground">Fax: {rfqDocument.extractedFields.pocFax}</p>
+                )}
+              </div>
+            )}
+
+            {/* Action Button */}
+            <div className="flex justify-end">
+              <Link href={`/rfq/${rfqDocument.id}/fill`}>
+                <Button className="bg-blue-600 hover:bg-blue-700">
+                  <DollarSign className="h-4 w-4 mr-2" />
+                  Fill Quote & Generate PDF
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* AI Comparison Section */}
       {(rfqDocument || governmentOrder) && (
