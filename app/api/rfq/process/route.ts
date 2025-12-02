@@ -3,20 +3,23 @@ import { db } from "@/lib/db";
 import { rfqDocuments } from "@/drizzle/migrations/schema";
 import { downloadFromS3, getPresignedDownloadUrl } from "@/lib/aws/s3";
 import pdfParse from "pdf-parse";
-import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { eq } from "drizzle-orm";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Initialize Gemini with API key
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 
 
 
 
 export async function POST(request: NextRequest) {
+  console.log("=== /api/rfq/process called ===");
   try {
-    const { s3Key, fileName, fileSize, mimeType } = await request.json();
+    const body = await request.json();
+    console.log("RFQ process request body:", body);
+    const { s3Key, fileName, fileSize, mimeType } = body;
 
     if (!s3Key || !fileName) {
       return NextResponse.json(
@@ -42,47 +45,91 @@ export async function POST(request: NextRequest) {
       const pdfData = await pdfParse(pdfBuffer);
       const extractedText = pdfData.text;
 
-      // Use OpenAI to identify fields
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert at extracting information from RFQ (Request for Quote) documents. 
-            Extract the following fields from the provided text and return them as JSON:
-            - rfqNumber: The RFQ number or solicitation number
-            - title: The title or description of the RFQ
-            - dueDate: The response due date (ISO format if possible)
-            - contractingOffice: The contracting office or agency
-            - pocName: Point of contact name
-            - pocEmail: Point of contact email
-            - pocPhone: Point of contact phone
-            - deliveryDate: Required delivery date
-            - deliveryLocation: Delivery location
-            - paymentTerms: Payment terms
-            - shippingTerms: Shipping/FOB terms
-            - requiredCertifications: Array of required certifications (8a, woman-owned, etc.)
-            - specialClauses: Any special clauses or requirements
-            - items: Array of line items with description, quantity, unit
-            - hasCageCode: boolean - whether CAGE code is required
-            - hasUnitCost: boolean - whether unit cost is required
-            - hasDeliveryTime: boolean - whether delivery time is required
-            - hasPaymentTerms: boolean - whether payment terms are required
-            
-            Return only valid JSON, no markdown formatting.`
-          },
+      // Use Gemini 2.5 Flash to identify fields - enhanced for ASRC Federal and government RFQ formats
+      const systemPrompt = `You are an expert at extracting information from government RFQ (Request for Quote) documents, particularly ASRC Federal and DLA formats.
+
+Extract ALL of the following fields and return as JSON:
+
+**RFQ HEADER INFO:**
+- rfqNumber: The RFQ number (e.g., "821 - 36208263")
+- rfqDate: Date the RFQ was issued (ISO format)
+- quoteFirmUntil: Date prices must be firm until (ISO format)
+- requestedReplyDate: When they need your response by (ISO format)
+- deliveryBeforeDate: Required delivery date (ISO format)
+
+**BUYER/CONTRACTING INFO:**
+- contractingOffice: The contracting agency (e.g., "ASRC Federal Facilities Logistics")
+- primeContractNumber: Any prime contract number referenced
+- pocName: Point of contact name
+- pocEmail: Point of contact email
+- pocPhone: Point of contact phone
+- pocFax: Point of contact fax
+
+**LINE ITEMS (array called "items"):**
+For each item, extract:
+- itemNumber: Line item number (e.g., "1", "Item 1")
+- quantity: Numeric quantity requested
+- unit: Unit of measure (e.g., "Drum", "EA", "LB")
+- description: Full product description
+- nsn: National Stock Number if present (e.g., "6810-00-281-2686")
+- partNumber: Part number or specification (e.g., "A-A-59123")
+- manufacturerPartNumber: Manufacturer's P/N if specified
+- unitOfIssue: How the item is packaged (e.g., "1 DR = 100 LB Net Wt")
+- specifications: Any MIL-SPEC or technical specifications
+- hazmat: Boolean - is this a hazardous material?
+- unNumber: UN Number for hazmat (e.g., "UN3288")
+
+**FORM FIELD REQUIREMENTS (what the RFQ asks you to fill):**
+- requiresCageCode: boolean
+- requiresSamUei: boolean
+- requiresNaicsCode: boolean
+- requiresBusinessType: boolean
+- requiresCertifications: boolean
+- requiresPaymentTerms: boolean
+- requiresFobTerms: boolean
+- requiresShippingCost: boolean
+- requiresCountryOfOrigin: boolean
+- requiresDeliveryDays: boolean
+- requiresUnitCost: boolean
+- requiresPriceBreaks: boolean
+- requiresManufacturer: boolean
+- requiresMinimumQty: boolean
+
+**SPECIAL CLAUSES (array of clause codes):**
+- clauseCodes: Array of clause codes mentioned (e.g., ["P724", "P710", "C903"])
+
+**DEFAULT TERMS SHOWN:**
+- defaultPaymentTerms: What payment terms they show as default (e.g., "Net 45")
+- defaultFob: Default FOB terms shown
+
+Return ONLY valid JSON, no markdown formatting or code blocks.`;
+
+      const result = await model.generateContent({
+        contents: [
           {
             role: "user",
-            content: extractedText.substring(0, 8000) // Limit to avoid token limits
+            parts: [
+              { text: systemPrompt + "\n\nHere is the RFQ document text to extract from:\n\n" + extractedText.substring(0, 30000) }
+            ]
           }
         ],
-        temperature: 0.3,
-        max_tokens: 2000,
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 4000,
+        },
       });
+
+      const completion = result.response;
 
       let extractedFields: any = {};
       try {
-        const content = completion.choices[0].message.content || "{}";
+        // Get text from Gemini response
+        let content = completion.text() || "{}";
+
+        // Clean up markdown code blocks if present
+        content = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+        console.log("Gemini extraction result (first 500 chars):", content.substring(0, 500));
         extractedFields = JSON.parse(content);
       } catch (e) {
         console.error("Failed to parse AI response:", e);

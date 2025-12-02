@@ -10,6 +10,11 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "Simurgh - AI-Powered RFQ Processing Platform",
   description: "Transform your RFQ processing with cutting-edge AI technology",
+  icons: {
+    icon: "/Senmurv.svg",
+    shortcut: "/Senmurv.svg",
+    apple: "/Senmurv.svg",
+  },
 };
 
 export default function RootLayout({

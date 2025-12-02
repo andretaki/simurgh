@@ -118,23 +118,32 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
       }
 
       const { url: presignedUrl, key: s3Key } = await uploadUrlResponse.json();
-      console.log("RFQ upload: step 2 uploading to S3", { s3Key, presignedUrl });
+      const contentType = file.type || "application/pdf";
+      console.log("RFQ upload: step 2 uploading to S3", { s3Key, contentType, presignedUrl: presignedUrl.substring(0, 100) + "..." });
 
       // Step 2: Upload to S3
-      const uploadResponse = await fetch(presignedUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/pdf" },
-        body: file,
-      });
+      try {
+        const uploadResponse = await fetch(presignedUrl, {
+          method: "PUT",
+          headers: { "Content-Type": contentType },
+          body: file,
+        });
 
-      if (!uploadResponse.ok) {
-        const errText = await uploadResponse.text();
-        console.error("RFQ upload: S3 upload failed", errText);
-        toast({ variant: "destructive", title: "Failed to upload file to storage" });
+        console.log("RFQ upload: S3 response status", uploadResponse.status, uploadResponse.statusText);
+
+        if (!uploadResponse.ok) {
+          const errText = await uploadResponse.text();
+          console.error("RFQ upload: S3 upload failed", { status: uploadResponse.status, errText });
+          toast({ variant: "destructive", title: "Failed to upload file to storage" });
+          return;
+        }
+      } catch (s3Error) {
+        console.error("RFQ upload: S3 PUT threw exception (likely CORS)", s3Error);
+        toast({ variant: "destructive", title: "S3 upload failed - check CORS configuration" });
         return;
       }
 
-      console.log("RFQ upload: step 3 calling /api/rfq/process", { s3Key });
+      console.log("RFQ upload: step 2 complete, now calling step 3 /api/rfq/process", { s3Key });
 
       // Step 3: Process RFQ
       const processResponse = await fetch("/api/rfq/process", {
