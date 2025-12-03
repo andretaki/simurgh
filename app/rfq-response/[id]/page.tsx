@@ -68,19 +68,19 @@ export default function RFQResponsePage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   
-  // Company Information - Prefilled for Alliance Chemicals
+  // Company Information - Loaded from database profile
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo>({
-    companyName: "ALLIANCE CHEMICALS",
-    contactName: "HOSSEIN TAKI",
-    contactTitle: "Sales Manager",
-    contactEmail: "alliance@alliancechemical.com",
-    contactPhone: "(512) 365-6838",
-    contactFax: "(512) 365-6833",
-    address: "204 S Edmond St, Taylor, TX, 76574-0721, United States",
-    samUei: "", // To be filled from settings
-    cageCode: "", // To be filled from settings
-    businessType: "Small Business",
-    naicsCode: "325998", // Chemical Manufacturing
+    companyName: "",
+    contactName: "",
+    contactTitle: "",
+    contactEmail: "",
+    contactPhone: "",
+    contactFax: "",
+    address: "",
+    samUei: "",
+    cageCode: "",
+    businessType: "",
+    naicsCode: "",
   });
 
   // Response Details
@@ -139,14 +139,24 @@ export default function RFQResponsePage() {
 
   const loadCompanySettings = async () => {
     try {
-      const response = await fetch("/api/settings/company");
+      const response = await fetch("/api/company-profile");
       if (response.ok) {
-        const settings = await response.json();
-        setCompanyInfo((prev) => ({
-          ...prev,
-          samUei: settings.samUei || "",
-          cageCode: settings.cageCode || "",
-        }));
+        const profile = await response.json();
+        if (profile) {
+          setCompanyInfo({
+            companyName: profile.companyName || "",
+            contactName: profile.contactPerson || "",
+            contactTitle: profile.contactTitle || "",
+            contactEmail: profile.contactEmail || "",
+            contactPhone: profile.contactPhone || "",
+            contactFax: profile.contactFax || "",
+            address: profile.address || "",
+            samUei: profile.samUei || "",
+            cageCode: profile.cageCode || "",
+            businessType: profile.businessType || "",
+            naicsCode: profile.naicsCode || "",
+          });
+        }
       }
     } catch (error) {
       console.error("Failed to load company settings:", error);

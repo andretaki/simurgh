@@ -11,9 +11,6 @@ const s3Client = new S3Client({
 
 const BUCKET_NAME = (process.env.AWS_S3_BUCKET || "simurgh-rfq-docs").trim();
 
-console.log("[S3] BUCKET_NAME:", JSON.stringify(BUCKET_NAME), "length:", BUCKET_NAME.length);
-console.log("[S3] AWS_REGION:", JSON.stringify(process.env.AWS_REGION));
-
 export async function uploadToS3(
   key: string,
   file: Buffer,

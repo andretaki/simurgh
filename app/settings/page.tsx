@@ -40,12 +40,12 @@ interface CompanyProfileForm {
 }
 
 const defaultProfile: CompanyProfileForm = {
-  companyName: "Alliance Chemical",
-  cageCode: "1LT50",
+  companyName: "",
+  cageCode: "",
   samUei: "",
   samRegistered: true,
-  naicsCode: "324191",
-  naicsSize: "<500 employees",
+  naicsCode: "",
+  naicsSize: "",
   employeeCount: "<500",
   businessType: "Small",
   smallDisadvantaged: false,
@@ -63,9 +63,9 @@ const defaultProfile: CompanyProfileForm = {
   defaultComplimentaryFreight: true,
   defaultPpaByVendor: false,
   countryOfOrigin: "USA",
-  contactPerson: "Hossein Taki",
-  contactEmail: "alliance@alliancechemical.com",
-  contactPhone: "512-784-3222",
+  contactPerson: "",
+  contactEmail: "",
+  contactPhone: "",
   address: "",
 };
 
