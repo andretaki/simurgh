@@ -33,7 +33,11 @@ interface ExtractedItem {
   unit: string;
   description: string;
   nsn?: string;
+  partNumber?: string;
+  manufacturerPartNumber?: string;
+  specifications?: string;
   hazmat?: boolean;
+  unNumber?: string;
 }
 
 interface ExtractedFields {
@@ -448,32 +452,55 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
 
               {/* The Key Info - What They Need */}
               {firstItem && (
-                <div className="px-6 py-8">
+                <div className="px-6 py-6">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
                     What they need
                   </p>
-                  <div className="flex items-baseline gap-2 mb-3">
-                    <span className="text-5xl font-bold text-gray-900">{firstItem.quantity}</span>
-                    <span className="text-2xl text-gray-500">{firstItem.unit}</span>
+
+                  {/* Quantity + Product Name */}
+                  <div className="flex items-baseline gap-2 mb-4">
+                    <span className="text-4xl font-bold text-gray-900">{firstItem.quantity}</span>
+                    <span className="text-xl text-gray-500">{firstItem.unit}</span>
                   </div>
-                  <p className="text-lg text-gray-600 leading-relaxed">
-                    {firstItem.description?.substring(0, 120)}
-                    {(firstItem.description?.length || 0) > 120 && "..."}
+
+                  {/* Extract product name from description (first sentence or key product) */}
+                  <p className="text-lg font-medium text-gray-900 mb-2">
+                    {firstItem.description?.match(/^[^.]+/)?.[0]?.replace(/CRITICAL APPLICATION ITEM\.\s*/i, '').trim() || 'Product'}
                   </p>
 
-                  <div className="flex items-center gap-4 mt-4">
+                  {/* Key IDs Row */}
+                  <div className="flex flex-wrap items-center gap-2 mb-4">
                     {firstItem.nsn && (
-                      <span className="px-3 py-1.5 bg-gray-100 text-gray-600 text-sm rounded-lg font-mono">
+                      <span className="px-3 py-1.5 bg-blue-50 text-blue-700 text-sm rounded-lg font-mono">
                         NSN: {firstItem.nsn}
+                      </span>
+                    )}
+                    {firstItem.partNumber && (
+                      <span className="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded-lg font-mono">
+                        {firstItem.partNumber}
                       </span>
                     )}
                     {firstItem.hazmat && (
                       <span className="px-3 py-1.5 bg-red-50 text-red-700 text-sm rounded-lg font-medium flex items-center gap-1">
                         <AlertTriangle className="h-3.5 w-3.5" />
-                        HAZMAT
+                        HAZMAT {firstItem.unNumber && `(${firstItem.unNumber})`}
                       </span>
                     )}
                   </div>
+
+                  {/* Manufacturer P/N if different */}
+                  {firstItem.manufacturerPartNumber && firstItem.manufacturerPartNumber !== firstItem.partNumber && (
+                    <p className="text-sm text-gray-500 mb-2">
+                      <span className="text-gray-400">Mfr P/N:</span> {firstItem.manufacturerPartNumber}
+                    </p>
+                  )}
+
+                  {/* Specs */}
+                  {firstItem.specifications && (
+                    <p className="text-sm text-gray-500">
+                      <span className="text-gray-400">Spec:</span> {firstItem.specifications}
+                    </p>
+                  )}
                 </div>
               )}
 
