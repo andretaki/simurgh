@@ -69,20 +69,35 @@ export default function RFQFillPage() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Just for record keeping - not for PDF fill
+  // For PDF boilerplate fill
   const [profileData, setProfileData] = useState({
+    // Business identifiers
     cageCode: "",
     samUei: "",
     naicsCode: "",
-    paymentTerms: "Net 30",
+    samRegistered: true,
+
+    // Terms
+    paymentTerms: "other", // "net45" or "other"
+    paymentTermsOther: "Net 30",
+    shippingCost: "noFreight" as "noFreight" | "ppa",
     fob: "origin" as "origin" | "destination",
+
+    // Business type & certifications
     businessType: "small" as "large" | "small",
     smallDisadvantaged: false,
     womanOwned: false,
     veteranOwned: false,
     serviceDisabledVetOwned: false,
     hubZone: false,
+    employeeCount: "<500",
+
+    // Signature
     authorizedSignature: "",
+    signatureDate: new Date().toISOString().split("T")[0],
+
+    // Quote header
+    pricesFirmUntil: "",
   });
 
   useEffect(() => {
@@ -113,19 +128,38 @@ export default function RFQFillPage() {
   };
 
   const applyProfile = (profile: CompanyProfile) => {
+    // Set prices firm until to 30 days from now
+    const firmUntil = new Date();
+    firmUntil.setDate(firmUntil.getDate() + 30);
+
     setProfileData({
+      // Business identifiers
       cageCode: profile.cageCode || "",
       samUei: profile.samUei || "",
       naicsCode: profile.naicsCode || "",
+      samRegistered: true,
+
+      // Terms
+      paymentTerms: profile.defaultPaymentTerms === "Net 45" ? "net45" : "other",
+      paymentTermsOther: profile.defaultPaymentTerms || "Net 30",
+      shippingCost: "noFreight",
+      fob: profile.defaultFob === "destination" ? "destination" : "origin",
+
+      // Business type & certifications
       businessType: profile.businessType === "large" ? "large" : "small",
       smallDisadvantaged: profile.smallDisadvantaged ?? false,
       womanOwned: profile.womanOwned ?? false,
       veteranOwned: profile.veteranOwned ?? false,
       serviceDisabledVetOwned: profile.serviceDisabledVetOwned ?? false,
       hubZone: profile.hubZone ?? false,
-      paymentTerms: profile.defaultPaymentTerms || "Net 30",
-      fob: profile.defaultFob === "destination" ? "destination" : "origin",
+      employeeCount: "<500",
+
+      // Signature
       authorizedSignature: profile.contactPerson || "",
+      signatureDate: new Date().toISOString().split("T")[0],
+
+      // Quote header
+      pricesFirmUntil: firmUntil.toISOString().split("T")[0],
     });
     setProfileLoaded(true);
   };
@@ -345,7 +379,7 @@ export default function RFQFillPage() {
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <Label className="text-xs text-gray-500">Payment</Label>
-                    <p className="text-sm mt-1">{profileData.paymentTerms}</p>
+                    <p className="text-sm mt-1">{profileData.paymentTerms === "net45" ? "Net 45" : profileData.paymentTermsOther}</p>
                   </div>
                   <div>
                     <Label className="text-xs text-gray-500">FOB</Label>
@@ -354,6 +388,21 @@ export default function RFQFillPage() {
                   <div>
                     <Label className="text-xs text-gray-500">Business</Label>
                     <p className="text-sm mt-1 capitalize">{profileData.businessType}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label className="text-xs text-gray-500">Prices Firm Until</Label>
+                    <p className="text-sm mt-1">{profileData.pricesFirmUntil || "—"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">Signature</Label>
+                    <p className="text-sm mt-1">{profileData.authorizedSignature || "—"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">Date</Label>
+                    <p className="text-sm mt-1">{profileData.signatureDate || "—"}</p>
                   </div>
                 </div>
 
