@@ -2,23 +2,34 @@
 
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Link from "next/link";
 import {
   Loader2,
   ArrowLeft,
   Zap,
-  ChevronDown,
-  ChevronRight,
   CheckCircle2,
   Download,
   FileUp,
   Clock,
-  Building2,
   AlertTriangle,
+  Package,
+  FileText,
+  Building2,
 } from "lucide-react";
+
+interface ExtractedItem {
+  itemNumber?: string;
+  quantity?: number;
+  unit?: string;
+  description?: string;
+  nsn?: string;
+  partNumber?: string;
+  manufacturerPartNumber?: string;
+  unitOfIssue?: string;
+  specifications?: string;
+  hazmat?: boolean;
+  unNumber?: string;
+}
 
 interface RFQData {
   id: number;
@@ -26,16 +37,20 @@ interface RFQData {
   s3Url: string;
   extractedFields: {
     rfqNumber?: string;
+    rfqDate?: string;
+    quoteFirmUntil?: string;
     requestedReplyDate?: string;
+    deliveryBeforeDate?: string;
     contractingOffice?: string;
-    items?: Array<{
-      itemNumber: string;
-      quantity: number;
-      unit: string;
-      description: string;
-      nsn?: string;
-      hazmat?: boolean;
-    }>;
+    primeContractNumber?: string;
+    pocName?: string;
+    pocEmail?: string;
+    pocPhone?: string;
+    pocFax?: string;
+    items?: ExtractedItem[];
+    clauseCodes?: string[];
+    defaultPaymentTerms?: string;
+    defaultFob?: string;
   };
 }
 
@@ -66,24 +81,18 @@ export default function RFQFillPage() {
   const [uploading, setUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [profileLoaded, setProfileLoaded] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // For PDF boilerplate fill
   const [profileData, setProfileData] = useState({
-    // Business identifiers
     cageCode: "",
     samUei: "",
     naicsCode: "",
     samRegistered: true,
-
-    // Terms
-    paymentTerms: "other", // "net45" or "other"
+    paymentTerms: "other",
     paymentTermsOther: "Net 30",
     shippingCost: "noFreight" as "noFreight" | "ppa",
     fob: "origin" as "origin" | "destination",
-
-    // Business type & certifications
     businessType: "small" as "large" | "small",
     smallDisadvantaged: false,
     womanOwned: false,
@@ -91,12 +100,8 @@ export default function RFQFillPage() {
     serviceDisabledVetOwned: false,
     hubZone: false,
     employeeCount: "<500",
-
-    // Signature
     authorizedSignature: "",
     signatureDate: new Date().toISOString().split("T")[0],
-
-    // Quote header
     pricesFirmUntil: "",
   });
 
@@ -128,24 +133,18 @@ export default function RFQFillPage() {
   };
 
   const applyProfile = (profile: CompanyProfile) => {
-    // Set prices firm until to 30 days from now
     const firmUntil = new Date();
     firmUntil.setDate(firmUntil.getDate() + 30);
 
     setProfileData({
-      // Business identifiers
       cageCode: profile.cageCode || "",
       samUei: profile.samUei || "",
       naicsCode: profile.naicsCode || "",
       samRegistered: true,
-
-      // Terms
       paymentTerms: profile.defaultPaymentTerms === "Net 45" ? "net45" : "other",
       paymentTermsOther: profile.defaultPaymentTerms || "Net 30",
       shippingCost: "noFreight",
       fob: profile.defaultFob === "destination" ? "destination" : "origin",
-
-      // Business type & certifications
       businessType: profile.businessType === "large" ? "large" : "small",
       smallDisadvantaged: profile.smallDisadvantaged ?? false,
       womanOwned: profile.womanOwned ?? false,
@@ -153,18 +152,13 @@ export default function RFQFillPage() {
       serviceDisabledVetOwned: profile.serviceDisabledVetOwned ?? false,
       hubZone: profile.hubZone ?? false,
       employeeCount: "<500",
-
-      // Signature
       authorizedSignature: profile.contactPerson || "",
       signatureDate: new Date().toISOString().split("T")[0],
-
-      // Quote header
       pricesFirmUntil: firmUntil.toISOString().split("T")[0],
     });
     setProfileLoaded(true);
   };
 
-  // Generate PDF with boilerplate filled (no pricing)
   const handleGenerate = async () => {
     setGenerating(true);
     try {
@@ -245,7 +239,7 @@ export default function RFQFillPage() {
   }
 
   const extracted = rfqData.extractedFields || {};
-  const firstItem = extracted.items?.[0];
+  const items = extracted.items || [];
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
@@ -280,7 +274,7 @@ export default function RFQFillPage() {
         </div>
       </div>
 
-      {/* Split Layout: PDF Preview + Form */}
+      {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
@@ -288,7 +282,7 @@ export default function RFQFillPage() {
           <div className="lg:sticky lg:top-24 lg:h-[calc(100vh-120px)]">
             <div className="bg-white rounded-2xl border shadow-sm h-full overflow-hidden flex flex-col">
               <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700">PDF Preview</span>
+                <span className="text-sm font-medium text-gray-700">Original RFQ</span>
                 {rfqData.s3Url && (
                   <a
                     href={rfqData.s3Url}
@@ -317,244 +311,285 @@ export default function RFQFillPage() {
             </div>
           </div>
 
-          {/* Right: Form */}
+          {/* Right: Extracted Data + Actions */}
           <div className="space-y-6">
 
-        {/* What They Need */}
-        {firstItem && (
-          <div className="bg-white rounded-2xl border p-6">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-              What they need
-            </p>
-            <div className="flex items-baseline gap-2 mb-2">
-              <span className="text-4xl font-bold text-gray-900">{firstItem.quantity}</span>
-              <span className="text-xl text-gray-500">{firstItem.unit}</span>
-            </div>
-            <p className="text-gray-600">{firstItem.description?.substring(0, 100)}</p>
-            <div className="flex items-center gap-3 mt-3">
-              {firstItem.nsn && (
-                <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded font-mono">
-                  NSN: {firstItem.nsn}
-                </span>
-              )}
-              {firstItem.hazmat && (
-                <span className="px-2 py-1 bg-red-50 text-red-700 text-xs rounded font-medium flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" />
-                  HAZMAT
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Profile Status */}
-        {profileLoaded ? (
-          <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
-            <CheckCircle2 className="h-5 w-5 text-green-600" />
-            <div className="flex-1">
-              <p className="font-medium text-green-900">Profile Loaded</p>
-              <p className="text-sm text-green-700">Your company info is ready for reference</p>
-            </div>
-          </div>
-        ) : companyProfile ? (
-          <button
-            onClick={() => applyProfile(companyProfile)}
-            className="w-full p-6 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl text-white text-left hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl group"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                  <Zap className="h-6 w-6" />
-                </div>
-                <div>
-                  <p className="text-lg font-semibold">Load Company Profile</p>
-                  <p className="text-blue-100 text-sm">CAGE, SAM, certifications...</p>
-                </div>
+            {/* RFQ Header Info */}
+            <div className="bg-white rounded-2xl border p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <FileText className="h-5 w-5 text-gray-400" />
+                <h2 className="font-semibold text-gray-900">RFQ Details</h2>
               </div>
-              <ChevronRight className="h-6 w-6 opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
-            </div>
-          </button>
-        ) : null}
 
-        {/* Collapsible: Company Details (for reference) */}
-        {profileLoaded && (
-          <div className="bg-white rounded-2xl border overflow-hidden">
-            <button
-              onClick={() => setDetailsOpen(!detailsOpen)}
-              className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <Building2 className="h-5 w-5 text-gray-400" />
-                <span className="font-medium text-gray-700">Company Details</span>
-                <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
-                  From profile
-                </span>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                {extracted.rfqDate && (
+                  <div>
+                    <p className="text-gray-400 text-xs uppercase">RFQ Date</p>
+                    <p className="font-medium">{extracted.rfqDate}</p>
+                  </div>
+                )}
+                {extracted.requestedReplyDate && (
+                  <div>
+                    <p className="text-gray-400 text-xs uppercase">Reply By</p>
+                    <p className="font-medium text-amber-600">{extracted.requestedReplyDate}</p>
+                  </div>
+                )}
+                {extracted.deliveryBeforeDate && (
+                  <div>
+                    <p className="text-gray-400 text-xs uppercase">Deliver By</p>
+                    <p className="font-medium">{extracted.deliveryBeforeDate}</p>
+                  </div>
+                )}
+                {extracted.primeContractNumber && (
+                  <div>
+                    <p className="text-gray-400 text-xs uppercase">Prime Contract</p>
+                    <p className="font-mono text-xs">{extracted.primeContractNumber}</p>
+                  </div>
+                )}
               </div>
-              {detailsOpen ? (
-                <ChevronDown className="h-5 w-5 text-gray-400" />
-              ) : (
-                <ChevronRight className="h-5 w-5 text-gray-400" />
+
+              {/* POC Info */}
+              {(extracted.pocName || extracted.pocEmail || extracted.pocPhone) && (
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-gray-400 text-xs uppercase mb-2">Point of Contact</p>
+                  <div className="space-y-1 text-sm">
+                    {extracted.pocName && <p className="font-medium">{extracted.pocName}</p>}
+                    {extracted.pocEmail && <p className="text-blue-600">{extracted.pocEmail}</p>}
+                    {extracted.pocPhone && <p className="text-gray-600">{extracted.pocPhone}</p>}
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
 
-            {detailsOpen && (
-              <div className="p-6 pt-2 border-t space-y-4">
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label className="text-xs text-gray-500">CAGE Code</Label>
-                    <p className="font-mono text-sm mt-1">{profileData.cageCode || "—"}</p>
+            {/* LINE ITEMS - Full Detail */}
+            <div className="bg-white rounded-2xl border p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Package className="h-5 w-5 text-gray-400" />
+                <h2 className="font-semibold text-gray-900">
+                  Line Items ({items.length})
+                </h2>
+              </div>
+
+              <div className="space-y-6">
+                {items.map((item, index) => (
+                  <div
+                    key={index}
+                    className={`${index > 0 ? "pt-6 border-t" : ""}`}
+                  >
+                    {/* Item Header */}
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-baseline gap-3">
+                        <span className="text-3xl font-bold text-gray-900">
+                          {item.quantity || "?"}
+                        </span>
+                        <span className="text-lg text-gray-500">
+                          {item.unit || "EA"}
+                        </span>
+                      </div>
+                      {item.itemNumber && (
+                        <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded font-mono">
+                          Item {item.itemNumber}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Full Description */}
+                    <div className="bg-gray-50 rounded-lg p-4 mb-3">
+                      <p className="text-gray-400 text-xs uppercase mb-1">Description</p>
+                      <p className="text-gray-800 whitespace-pre-wrap text-sm leading-relaxed">
+                        {item.description || "No description"}
+                      </p>
+                    </div>
+
+                    {/* Part Numbers & IDs */}
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      {item.nsn && (
+                        <div className="bg-blue-50 rounded-lg p-3">
+                          <p className="text-blue-400 text-xs uppercase">NSN</p>
+                          <p className="font-mono font-medium text-blue-900">{item.nsn}</p>
+                        </div>
+                      )}
+                      {item.partNumber && (
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-gray-400 text-xs uppercase">Part Number / Spec</p>
+                          <p className="font-mono font-medium text-gray-900">{item.partNumber}</p>
+                        </div>
+                      )}
+                      {item.manufacturerPartNumber && (
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-gray-400 text-xs uppercase">Manufacturer P/N</p>
+                          <p className="font-mono font-medium text-gray-900">{item.manufacturerPartNumber}</p>
+                        </div>
+                      )}
+                      {item.unitOfIssue && (
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-gray-400 text-xs uppercase">Unit of Issue</p>
+                          <p className="text-gray-900 text-sm">{item.unitOfIssue}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Specifications */}
+                    {item.specifications && (
+                      <div className="bg-gray-50 rounded-lg p-3 mb-3">
+                        <p className="text-gray-400 text-xs uppercase mb-1">Specifications</p>
+                        <p className="text-gray-800 text-sm">{item.specifications}</p>
+                      </div>
+                    )}
+
+                    {/* Hazmat Warning */}
+                    {item.hazmat && (
+                      <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <AlertTriangle className="h-5 w-5 text-red-600" />
+                        <div>
+                          <p className="font-medium text-red-900">HAZMAT Material</p>
+                          {item.unNumber && (
+                            <p className="text-sm text-red-700">UN Number: {item.unNumber}</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <Label className="text-xs text-gray-500">SAM UEI</Label>
-                    <p className="font-mono text-sm mt-1">{profileData.samUei || "—"}</p>
+                ))}
+
+                {items.length === 0 && (
+                  <p className="text-gray-400 text-center py-4">
+                    No line items extracted
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Company Boilerplate Data */}
+            {profileLoaded && (
+              <div className="bg-white rounded-2xl border p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Building2 className="h-5 w-5 text-green-500" />
+                  <h2 className="font-semibold text-gray-900">Your Company Info</h2>
+                  <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />
+                  <span className="text-xs text-green-600">Auto-loaded</span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-gray-400 text-xs uppercase">CAGE</p>
+                    <p className="font-mono font-medium">{profileData.cageCode || "—"}</p>
                   </div>
-                  <div>
-                    <Label className="text-xs text-gray-500">NAICS</Label>
-                    <p className="font-mono text-sm mt-1">{profileData.naicsCode || "—"}</p>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-gray-400 text-xs uppercase">SAM UEI</p>
+                    <p className="font-mono font-medium text-xs">{profileData.samUei || "—"}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-gray-400 text-xs uppercase">NAICS</p>
+                    <p className="font-mono font-medium">{profileData.naicsCode || "—"}</p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label className="text-xs text-gray-500">Payment</Label>
-                    <p className="text-sm mt-1">{profileData.paymentTerms === "net45" ? "Net 45" : profileData.paymentTermsOther}</p>
+                <div className="grid grid-cols-3 gap-3 mt-3 text-sm">
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-gray-400 text-xs uppercase">Payment</p>
+                    <p className="font-medium">
+                      {profileData.paymentTerms === "net45" ? "Net 45" : profileData.paymentTermsOther}
+                    </p>
                   </div>
-                  <div>
-                    <Label className="text-xs text-gray-500">FOB</Label>
-                    <p className="text-sm mt-1 capitalize">{profileData.fob}</p>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-gray-400 text-xs uppercase">FOB</p>
+                    <p className="font-medium capitalize">{profileData.fob}</p>
                   </div>
-                  <div>
-                    <Label className="text-xs text-gray-500">Business</Label>
-                    <p className="text-sm mt-1 capitalize">{profileData.businessType}</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label className="text-xs text-gray-500">Prices Firm Until</Label>
-                    <p className="text-sm mt-1">{profileData.pricesFirmUntil || "—"}</p>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-gray-500">Signature</Label>
-                    <p className="text-sm mt-1">{profileData.authorizedSignature || "—"}</p>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-gray-500">Date</Label>
-                    <p className="text-sm mt-1">{profileData.signatureDate || "—"}</p>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-gray-400 text-xs uppercase">Prices Firm</p>
+                    <p className="font-medium">{profileData.pricesFirmUntil || "—"}</p>
                   </div>
                 </div>
 
-                <div>
-                  <Label className="text-xs text-gray-500 mb-2 block">Certifications</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {profileData.smallDisadvantaged && (
-                      <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-full">SDB</span>
-                    )}
-                    {profileData.womanOwned && (
-                      <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-full">WOSB</span>
-                    )}
-                    {profileData.veteranOwned && (
-                      <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-full">VOSB</span>
-                    )}
-                    {profileData.serviceDisabledVetOwned && (
-                      <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-full">SDVOSB</span>
-                    )}
-                    {profileData.hubZone && (
-                      <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-full">HUBZone</span>
-                    )}
-                    {!profileData.smallDisadvantaged && !profileData.womanOwned && !profileData.veteranOwned && !profileData.serviceDisabledVetOwned && !profileData.hubZone && (
-                      <span className="text-sm text-gray-400">None</span>
-                    )}
-                  </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {profileData.smallDisadvantaged && (
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">SDB</span>
+                  )}
+                  {profileData.womanOwned && (
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">WOSB</span>
+                  )}
+                  {profileData.veteranOwned && (
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">VOSB</span>
+                  )}
+                  {profileData.serviceDisabledVetOwned && (
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">SDVOSB</span>
+                  )}
+                  {profileData.hubZone && (
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">HUBZone</span>
+                  )}
+                  <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">SAM Registered</span>
+                  <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">No Freight Adder</span>
+                </div>
+
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-gray-400 text-xs uppercase mb-1">Authorized Signature</p>
+                  <p className="font-medium italic">{profileData.authorizedSignature || "—"}</p>
                 </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* THE MAIN ACTION */}
-        <div className="bg-white rounded-2xl border p-8 space-y-6">
-          <div className="text-center space-y-2">
-            <h2 className="text-xl font-bold text-gray-900">Fill the RFQ</h2>
-            <p className="text-gray-500">
-              Generate with company info pre-filled, add pricing in Adobe, then upload
-            </p>
-          </div>
+            {/* Actions */}
+            <div className="bg-white rounded-2xl border p-6">
+              <h2 className="font-semibold text-gray-900 mb-4">Actions</h2>
 
-          {/* Step indicators */}
-          <div className="flex items-center justify-center gap-6 py-4">
-            <div className="flex flex-col items-center gap-1">
-              <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">1</div>
-              <span className="text-xs text-gray-600">Generate</span>
+              <div className="space-y-3">
+                {/* Generate Pre-filled PDF */}
+                <button
+                  onClick={handleGenerate}
+                  disabled={generating || !profileLoaded}
+                  className="w-full flex items-center justify-center gap-3 h-12 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition-all disabled:opacity-50"
+                >
+                  {generating ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Zap className="h-5 w-5" />
+                  )}
+                  {generating ? "Generating..." : "Download Pre-Filled PDF"}
+                </button>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {rfqData.s3Url && (
+                    <a
+                      href={rfqData.s3Url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 h-10 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-50 transition-all"
+                    >
+                      <Download className="h-4 w-4" />
+                      Original PDF
+                    </a>
+                  )}
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="flex items-center justify-center gap-2 h-10 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-50 transition-all disabled:opacity-50"
+                  >
+                    {uploading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileUp className="h-4 w-4" />
+                    )}
+                    {uploading ? "Uploading..." : "Upload Completed"}
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf"
+                    className="hidden"
+                    onChange={handleUpload}
+                  />
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-400 mt-4 text-center">
+                Download pre-filled PDF → Add pricing in Adobe → Upload completed response
+              </p>
             </div>
-            <div className="w-6 h-px bg-gray-300" />
-            <div className="flex flex-col items-center gap-1">
-              <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">2</div>
-              <span className="text-xs text-gray-600">Add Pricing</span>
-            </div>
-            <div className="w-6 h-px bg-gray-300" />
-            <div className="flex flex-col items-center gap-1">
-              <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">3</div>
-              <span className="text-xs text-gray-600">Upload</span>
-            </div>
-          </div>
 
-          {/* Primary: Generate with boilerplate */}
-          <button
-            onClick={handleGenerate}
-            disabled={generating || !profileLoaded}
-            className="w-full flex items-center justify-center gap-3 h-16 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all disabled:opacity-50 shadow-lg"
-          >
-            {generating ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Zap className="h-5 w-5" />
-            )}
-            {generating ? "Generating..." : "Generate with Company Info"}
-          </button>
-
-          <p className="text-center text-xs text-gray-400">
-            CAGE, SAM, certifications, payment terms pre-filled. Just add pricing.
-          </p>
-
-          {/* Secondary row */}
-          <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-            {rfqData.s3Url && (
-              <a
-                href={rfqData.s3Url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 h-12 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-all"
-              >
-                <Download className="h-4 w-4" />
-                Original RFQ
-              </a>
-            )}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="flex items-center justify-center gap-2 h-12 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-all disabled:opacity-50"
-            >
-              {uploading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <FileUp className="h-4 w-4" />
-              )}
-              {uploading ? "Uploading..." : "Upload Completed"}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf"
-              className="hidden"
-              onChange={handleUpload}
-            />
           </div>
         </div>
-
-          </div> {/* End Right: Form */}
-        </div> {/* End grid */}
-      </div> {/* End Split Layout */}
+      </div>
     </div>
   );
 }
