@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, rfqDocuments, rfqResponses, governmentOrders, qualitySheets, generatedLabels } from "@/drizzle/migrations/schema";
 import { eq } from "drizzle-orm";
+import { getPresignedDownloadUrl } from "@/lib/aws/s3";
 
 // GET - Get project with all related data
 export async function GET(
@@ -32,7 +33,19 @@ export async function GET(
         .select()
         .from(rfqDocuments)
         .where(eq(rfqDocuments.id, project.rfqDocumentId));
-      rfqDocument = doc;
+
+      if (doc) {
+        // Generate fresh presigned URL
+        let s3Url = doc.s3Url;
+        if (doc.s3Key) {
+          try {
+            s3Url = await getPresignedDownloadUrl(doc.s3Key);
+          } catch (e) {
+            console.error("Failed to generate presigned URL:", e);
+          }
+        }
+        rfqDocument = { ...doc, s3Url };
+      }
     }
 
     if (project.rfqResponseId) {
