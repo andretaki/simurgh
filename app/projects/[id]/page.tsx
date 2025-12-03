@@ -1,10 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -12,24 +9,12 @@ import {
   Package,
   Upload,
   CheckCircle,
-  AlertTriangle,
-  Clock,
-  Tag,
-  RefreshCw,
-  Download,
-  Check,
-  X,
-  Calendar,
-  User,
+  ChevronRight,
   Phone,
   Mail,
-  Building2,
-  DollarSign,
-  Truck,
   ExternalLink,
-  ClipboardList,
+  Loader2,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 
 interface Project {
@@ -37,22 +22,7 @@ interface Project {
   name: string;
   customerName: string | null;
   rfqNumber: string | null;
-  poNumber: string | null;
-  nsn: string | null;
-  productName: string | null;
-  quantity: number | null;
   status: string;
-  comparisonResults: ComparisonResults | null;
-  comparisonStatus: string | null;
-}
-
-interface ComparisonResults {
-  overallStatus: string;
-  summary: string;
-  matches: { field: string; rfqValue: string; poValue: string }[];
-  mismatches: { field: string; rfqValue: string; poValue: string; severity: string; note: string }[];
-  missing: { field: string; presentIn: string; value: string }[];
-  recommendations: string[];
 }
 
 interface ExtractedItem {
@@ -61,27 +31,16 @@ interface ExtractedItem {
   unit: string;
   description: string;
   nsn?: string;
-  partNumber?: string;
-  manufacturerPartNumber?: string;
-  unitOfIssue?: string;
   hazmat?: boolean;
-  unNumber?: string;
 }
 
 interface ExtractedFields {
   rfqNumber?: string;
-  rfqDate?: string;
-  quoteFirmUntil?: string;
   requestedReplyDate?: string;
-  deliveryBeforeDate?: string;
   contractingOffice?: string;
-  primeContractNumber?: string;
   pocName?: string;
   pocEmail?: string;
   pocPhone?: string;
-  pocFax?: string;
-  defaultPaymentTerms?: string;
-  defaultFob?: string;
   items?: ExtractedItem[];
 }
 
@@ -97,7 +56,6 @@ interface GovernmentOrder {
   id: number;
   poNumber: string;
   productName: string;
-  nsn: string | null;
   quantity: number;
   status: string;
 }
@@ -110,7 +68,6 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const [rfqDocument, setRfqDocument] = useState<RfqDocument | null>(null);
   const [governmentOrder, setGovernmentOrder] = useState<GovernmentOrder | null>(null);
   const [loading, setLoading] = useState(true);
-  const [comparing, setComparing] = useState(false);
   const [uploadingRfq, setUploadingRfq] = useState(false);
   const [uploadingPo, setUploadingPo] = useState(false);
 
@@ -140,76 +97,44 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
 
     setUploadingRfq(true);
     try {
-      // Step 1: Get presigned URL
-      console.log("RFQ upload: step 1 getting presigned URL", { projectId, fileName: file.name });
       const uploadUrlResponse = await fetch("/api/s3/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          filename: file.name,
-          contentType: file.type || "application/pdf",
-        }),
+        body: JSON.stringify({ filename: file.name, contentType: file.type || "application/pdf" }),
       });
 
       if (!uploadUrlResponse.ok) {
-        const errText = await uploadUrlResponse.text();
-        console.error("RFQ upload: presign failed", errText);
-        toast({ variant: "destructive", title: "Failed to get upload URL" });
+        toast({ variant: "destructive", title: "Upload failed" });
         return;
       }
 
       const { url: presignedUrl, key: s3Key } = await uploadUrlResponse.json();
-      const contentType = file.type || "application/pdf";
-      console.log("RFQ upload: step 2 uploading to S3", { s3Key, contentType, presignedUrl: presignedUrl.substring(0, 100) + "..." });
 
-      // Step 2: Upload to S3
-      try {
-        const uploadResponse = await fetch(presignedUrl, {
-          method: "PUT",
-          headers: { "Content-Type": contentType },
-          body: file,
-        });
+      const uploadResponse = await fetch(presignedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/pdf" },
+        body: file,
+      });
 
-        console.log("RFQ upload: S3 response status", uploadResponse.status, uploadResponse.statusText);
-
-        if (!uploadResponse.ok) {
-          const errText = await uploadResponse.text();
-          console.error("RFQ upload: S3 upload failed", { status: uploadResponse.status, errText });
-          toast({ variant: "destructive", title: "Failed to upload file to storage" });
-          return;
-        }
-      } catch (s3Error) {
-        console.error("RFQ upload: S3 PUT threw exception (likely CORS)", s3Error);
-        toast({ variant: "destructive", title: "S3 upload failed - check CORS configuration" });
+      if (!uploadResponse.ok) {
+        toast({ variant: "destructive", title: "Upload failed" });
         return;
       }
 
-      console.log("RFQ upload: step 2 complete, now calling step 3 /api/rfq/process", { s3Key });
-
-      // Step 3: Process RFQ
       const processResponse = await fetch("/api/rfq/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          s3Key,
-          fileName: file.name,
-          fileSize: file.size,
-          mimeType: file.type || "application/pdf",
-        }),
+        body: JSON.stringify({ s3Key, fileName: file.name, fileSize: file.size, mimeType: file.type || "application/pdf" }),
       });
 
       if (!processResponse.ok) {
-        const errorData = await processResponse.json().catch(() => null);
-        console.error("RFQ upload: process failed", errorData);
-        toast({ variant: "destructive", title: errorData?.error || "RFQ processing failed" });
+        toast({ variant: "destructive", title: "Processing failed" });
         return;
       }
 
       const data = await processResponse.json();
-      console.log("RFQ upload: process success", data);
 
-      // Step 4: Update project
-      const updateResponse = await fetch(`/api/projects/${projectId}`, {
+      await fetch(`/api/projects/${projectId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -220,19 +145,11 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         }),
       });
 
-      if (!updateResponse.ok) {
-        const updateError = await updateResponse.json().catch(() => null);
-        console.error("RFQ upload: project update failed", updateError);
-        toast({ variant: "destructive", title: "Project update failed" });
-        return;
-      }
-
-      console.log("RFQ upload: complete!");
-      toast({ title: "RFQ uploaded successfully" });
+      toast({ title: "RFQ uploaded!" });
       await fetchProject();
     } catch (error) {
-      console.error("RFQ upload failed:", error);
-      toast({ variant: "destructive", title: "RFQ upload failed" });
+      console.error("Upload failed:", error);
+      toast({ variant: "destructive", title: "Upload failed" });
     } finally {
       setUploadingRfq(false);
     }
@@ -247,519 +164,238 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch("/api/orders/upload", {
-        method: "POST",
-        body: formData,
-      });
+      const response = await fetch("/api/orders/upload", { method: "POST", body: formData });
 
       if (response.ok) {
         const data = await response.json();
-        // Update project with PO reference
         await fetch(`/api/projects/${projectId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             governmentOrderId: data.orderId,
             poNumber: data.order?.poNumber,
-            nsn: data.order?.nsn,
-            productName: data.order?.productName,
-            quantity: data.order?.quantity,
             status: "po_received",
-            poReceivedAt: new Date().toISOString(),
           }),
         });
-        toast({ title: "PO uploaded successfully" });
+        toast({ title: "PO uploaded!" });
         fetchProject();
       } else {
         toast({ variant: "destructive", title: "Upload failed" });
       }
     } catch (error) {
-      console.error("PO upload failed:", error);
       toast({ variant: "destructive", title: "Upload failed" });
     } finally {
       setUploadingPo(false);
     }
   };
 
-  const runComparison = async () => {
-    setComparing(true);
-    try {
-      const response = await fetch(`/api/projects/${projectId}/compare`, {
-        method: "POST",
-      });
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      </div>
+    );
+  }
 
-      if (response.ok) {
-        const data = await response.json();
-        setProject((prev) =>
-          prev
-            ? {
-                ...prev,
-                comparisonResults: data.comparison,
-                comparisonStatus: data.comparison.overallStatus,
-              }
-            : null
-        );
-        toast({ title: "Comparison complete" });
-      } else {
-        const error = await response.json();
-        toast({ variant: "destructive", title: error.error || "Comparison failed" });
-      }
-    } catch (error) {
-      console.error("Comparison failed:", error);
-      toast({ variant: "destructive", title: "Comparison failed" });
-    } finally {
-      setComparing(false);
-    }
-  };
+  if (!project) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-gray-500">Project not found</p>
+      </div>
+    );
+  }
 
-  const updateProjectName = async (name: string) => {
-    try {
-      await fetch(`/api/projects/${projectId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-    } catch (error) {
-      console.error("Failed to update name:", error);
-    }
-  };
-
-  if (loading) return <div className="p-8">Loading...</div>;
-  if (!project) return <div className="p-8">Project not found</div>;
+  const extracted = rfqDocument?.extractedFields;
+  const firstItem = extracted?.items?.[0];
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <Link href="/projects">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back
-          </Button>
+    <div className="min-h-screen bg-gray-50">
+      {/* Simple Header */}
+      <div className="bg-white border-b px-6 py-4">
+        <Link href="/projects" className="inline-flex items-center text-gray-500 hover:text-gray-700 mb-2">
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          Back to Projects
         </Link>
-        <Input
-          value={project.name}
-          onChange={(e) => setProject({ ...project, name: e.target.value })}
-          onBlur={(e) => updateProjectName(e.target.value)}
-          className="text-xl font-bold border-none shadow-none focus-visible:ring-0 p-0 h-auto"
-        />
+        <h1 className="text-2xl font-semibold text-gray-900">
+          {extracted?.rfqNumber ? `RFQ #${extracted.rfqNumber}` : project.name}
+        </h1>
+        {extracted?.contractingOffice && (
+          <p className="text-gray-500">{extracted.contractingOffice}</p>
+        )}
       </div>
 
-      {/* Status Overview */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
-        <StatusCard
-          icon={<FileText className="h-5 w-5" />}
-          label="RFQ"
-          status={rfqDocument ? "uploaded" : "pending"}
-          detail={rfqDocument?.rfqNumber || "Not uploaded"}
-        />
-        <StatusCard
-          icon={<FileText className="h-5 w-5" />}
-          label="Quote"
-          status={project.status === "quoted" ? "sent" : "pending"}
-          detail={project.status === "quoted" ? "Sent" : "Not sent"}
-        />
-        <StatusCard
-          icon={<Package className="h-5 w-5" />}
-          label="PO"
-          status={governmentOrder ? "uploaded" : "pending"}
-          detail={governmentOrder?.poNumber || "Not uploaded"}
-        />
-        <StatusCard
-          icon={<CheckCircle className="h-5 w-5" />}
-          label="Verification"
-          status={governmentOrder?.status === "verified" ? "complete" : "pending"}
-          detail={governmentOrder?.status || "Pending"}
-        />
-      </div>
+      <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
 
-      <div className="grid grid-cols-2 gap-6">
-        {/* RFQ Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-blue-600" />
-              RFQ (Request for Quote)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {rfqDocument ? (
-              <div className="space-y-3">
-                <div className="p-3 bg-green-50 rounded border border-green-200">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-green-700">
-                      <CheckCircle className="h-4 w-4" />
-                      <span className="font-medium">{rfqDocument.fileName}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      {rfqDocument.s3Url && (
-                        <a href={rfqDocument.s3Url} target="_blank" rel="noopener noreferrer">
-                          <Button variant="outline" size="sm">
-                            <ExternalLink className="h-3 w-3 mr-1" />
-                            View PDF
-                          </Button>
-                        </a>
-                      )}
-                      <Link href={`/rfq/${rfqDocument.id}/fill`}>
-                        <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                          <DollarSign className="h-3 w-3 mr-1" />
-                          Fill Quote
-                        </Button>
-                      </Link>
-                    </div>
+        {/* Step 1: RFQ */}
+        <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+          {rfqDocument ? (
+            <>
+              {/* RFQ Header - Green success state */}
+              <div className="p-6 border-b bg-green-50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
+                    <CheckCircle className="h-5 w-5 text-white" />
                   </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-green-900">RFQ Received</p>
+                    <p className="text-sm text-green-700">{rfqDocument.fileName}</p>
+                  </div>
+                  {rfqDocument.s3Url && (
+                    <a href={rfqDocument.s3Url} target="_blank" rel="noopener noreferrer" className="text-green-700 hover:text-green-900">
+                      <ExternalLink className="h-5 w-5" />
+                    </a>
+                  )}
                 </div>
               </div>
-            ) : (
-              <div className="text-center py-6">
-                <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-500 mb-3">Upload RFQ document</p>
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={handleRfqUpload}
-                  className="hidden"
-                  id="rfq-upload"
-                  disabled={uploadingRfq}
-                />
-                <label htmlFor="rfq-upload">
-                  <Button asChild disabled={uploadingRfq}>
-                    <span>{uploadingRfq ? "Uploading..." : "Upload RFQ"}</span>
-                  </Button>
-                </label>
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
-        {/* PO Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5 text-purple-600" />
-              Purchase Order
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {governmentOrder ? (
-              <div className="space-y-3">
-                <div className="p-3 bg-green-50 rounded border border-green-200">
-                  <div className="flex items-center gap-2 text-green-700">
-                    <CheckCircle className="h-4 w-4" />
-                    <span className="font-medium">PO# {governmentOrder.poNumber}</span>
-                  </div>
-                  <p className="text-sm text-gray-600 mt-1">{governmentOrder.productName}</p>
-                  <p className="text-sm text-gray-600">NSN: {governmentOrder.nsn || "N/A"}</p>
+              {/* What they're asking for - THE KEY INFO */}
+              {firstItem && (
+                <div className="p-6 border-b">
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">They need</p>
+                  <p className="text-3xl font-bold text-gray-900 mb-1">
+                    {firstItem.quantity} {firstItem.unit}
+                  </p>
+                  <p className="text-gray-600">{firstItem.description?.substring(0, 100)}</p>
+                  {firstItem.nsn && (
+                    <p className="text-sm text-gray-500 mt-2">NSN: {firstItem.nsn}</p>
+                  )}
+                  {firstItem.hazmat && (
+                    <span className="inline-block mt-2 px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded">
+                      ⚠️ HAZMAT
+                    </span>
+                  )}
                 </div>
-                <Link href={`/orders/${governmentOrder.id}`}>
-                  <Button variant="outline" size="sm" className="w-full">
-                    Go to Order Workflow
-                    <ArrowLeft className="h-4 w-4 ml-2 rotate-180" />
+              )}
+
+              {/* Due date + Contact - Secondary info */}
+              <div className="p-6 border-b bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Response Due</p>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {extracted?.requestedReplyDate || "Not specified"}
+                    </p>
+                  </div>
+                  {extracted?.pocName && (
+                    <div className="text-right">
+                      <p className="font-medium text-gray-900">{extracted.pocName}</p>
+                      <div className="flex items-center gap-3 text-sm text-gray-500">
+                        {extracted.pocEmail && (
+                          <a href={`mailto:${extracted.pocEmail}`} className="hover:text-blue-600 flex items-center gap-1">
+                            <Mail className="h-3 w-3" />
+                            Email
+                          </a>
+                        )}
+                        {extracted.pocPhone && (
+                          <a href={`tel:${extracted.pocPhone}`} className="hover:text-blue-600 flex items-center gap-1">
+                            <Phone className="h-3 w-3" />
+                            Call
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Big Action Button */}
+              <div className="p-6">
+                <Link href={`/rfq/${rfqDocument.id}/fill`} className="block">
+                  <Button className="w-full h-14 text-lg bg-blue-600 hover:bg-blue-700">
+                    Respond to RFQ
+                    <ChevronRight className="h-5 w-5 ml-2" />
                   </Button>
                 </Link>
               </div>
-            ) : (
-              <div className="text-center py-6">
-                <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-500 mb-3">Upload PO document</p>
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={handlePoUpload}
-                  className="hidden"
-                  id="po-upload"
-                  disabled={uploadingPo}
-                />
-                <label htmlFor="po-upload">
-                  <Button asChild disabled={uploadingPo}>
-                    <span>{uploadingPo ? "Uploading..." : "Upload PO"}</span>
-                  </Button>
-                </label>
+            </>
+          ) : (
+            /* Upload RFQ state */
+            <div className="p-8 text-center">
+              <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+                <FileText className="h-8 w-8 text-gray-400" />
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* RFQ Quick Summary - Extracted Fields */}
-      {rfqDocument?.extractedFields && (
-        <Card className="mt-6 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-600 rounded-lg">
-                  <ClipboardList className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <CardTitle className="text-lg">RFQ #{rfqDocument.extractedFields.rfqNumber || rfqDocument.rfqNumber}</CardTitle>
-                  <p className="text-sm text-muted-foreground">{rfqDocument.extractedFields.contractingOffice || "Government RFQ"}</p>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                {rfqDocument.extractedFields.requestedReplyDate && (
-                  <Badge variant="destructive" className="text-sm px-3 py-1">
-                    <Calendar className="h-3 w-3 mr-1" />
-                    Due: {rfqDocument.extractedFields.requestedReplyDate}
-                  </Badge>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Items Summary */}
-            {rfqDocument.extractedFields.items && rfqDocument.extractedFields.items.length > 0 && (
-              <div className="bg-white rounded-lg border p-4">
-                <h3 className="font-semibold text-sm text-muted-foreground mb-3 flex items-center gap-2">
-                  <Package className="h-4 w-4" />
-                  ITEMS REQUESTED ({rfqDocument.extractedFields.items.length})
-                </h3>
-                <div className="space-y-3">
-                  {rfqDocument.extractedFields.items.map((item, idx) => (
-                    <div key={idx} className="border-l-4 border-blue-500 pl-3 py-1">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <Badge variant="outline" className="text-xs">Item {item.itemNumber || idx + 1}</Badge>
-                            {item.nsn && <Badge variant="secondary" className="text-xs">NSN: {item.nsn}</Badge>}
-                            {item.manufacturerPartNumber && (
-                              <Badge variant="secondary" className="text-xs">P/N: {item.manufacturerPartNumber}</Badge>
-                            )}
-                            {item.hazmat && (
-                              <Badge variant="destructive" className="text-xs">
-                                <AlertTriangle className="h-3 w-3 mr-1" />
-                                HAZMAT
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="font-medium text-sm">{item.description?.substring(0, 200)}{(item.description?.length || 0) > 200 ? "..." : ""}</p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="font-bold text-lg text-blue-600">{item.quantity} {item.unit}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Quick Stats Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              <div className="bg-white rounded-lg border p-3 text-center">
-                <p className="text-xs text-muted-foreground">RFQ Date</p>
-                <p className="font-semibold text-sm">{rfqDocument.extractedFields.rfqDate || "—"}</p>
-              </div>
-              <div className="bg-white rounded-lg border p-3 text-center">
-                <p className="text-xs text-muted-foreground">Deliver Before</p>
-                <p className="font-semibold text-sm">{rfqDocument.extractedFields.deliveryBeforeDate || "—"}</p>
-              </div>
-              <div className="bg-white rounded-lg border p-3 text-center">
-                <p className="text-xs text-muted-foreground">Quote Firm Until</p>
-                <p className="font-semibold text-sm">{rfqDocument.extractedFields.quoteFirmUntil || "—"}</p>
-              </div>
-              <div className="bg-white rounded-lg border p-3 text-center">
-                <p className="text-xs text-muted-foreground">Default FOB</p>
-                <p className="font-semibold text-sm">{rfqDocument.extractedFields.defaultFob || "Origin"}</p>
-              </div>
-              <div className="bg-white rounded-lg border p-3 text-center">
-                <p className="text-xs text-muted-foreground">Payment</p>
-                <p className="font-semibold text-sm">{rfqDocument.extractedFields.defaultPaymentTerms || "Net 45"}</p>
-              </div>
-            </div>
-
-            {/* Buyer Contact */}
-            {(rfqDocument.extractedFields.pocName || rfqDocument.extractedFields.pocEmail) && (
-              <div className="flex items-center justify-between bg-white rounded-lg border p-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gray-100 rounded-full">
-                    <User className="h-4 w-4 text-gray-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-sm">{rfqDocument.extractedFields.pocName || "Buyer Contact"}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {rfqDocument.extractedFields.pocEmail}
-                      {rfqDocument.extractedFields.pocPhone && ` • ${rfqDocument.extractedFields.pocPhone}`}
-                    </p>
-                  </div>
-                </div>
-                {rfqDocument.extractedFields.pocFax && (
-                  <p className="text-xs text-muted-foreground">Fax: {rfqDocument.extractedFields.pocFax}</p>
-                )}
-              </div>
-            )}
-
-            {/* Action Button */}
-            <div className="flex justify-end">
-              <Link href={`/rfq/${rfqDocument.id}/fill`}>
-                <Button className="bg-blue-600 hover:bg-blue-700">
-                  <DollarSign className="h-4 w-4 mr-2" />
-                  Fill Quote & Generate PDF
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* AI Comparison Section */}
-      {(rfqDocument || governmentOrder) && (
-        <Card className="mt-6">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <RefreshCw className="h-5 w-5 text-orange-600" />
-                AI Document Comparison
-              </CardTitle>
-              <Button onClick={runComparison} disabled={comparing || (!rfqDocument && !governmentOrder)}>
-                {comparing ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Comparing...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Run Comparison
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {project.comparisonResults ? (
-              <div className="space-y-4">
-                {/* Summary */}
-                <div
-                  className={`p-4 rounded-lg border ${
-                    project.comparisonStatus === "matched"
-                      ? "bg-green-50 border-green-200"
-                      : project.comparisonStatus === "mismatched"
-                      ? "bg-red-50 border-red-200"
-                      : "bg-yellow-50 border-yellow-200"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    {project.comparisonStatus === "matched" ? (
-                      <CheckCircle className="h-5 w-5 text-green-600" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">Upload RFQ</h3>
+              <p className="text-gray-500 mb-6">Start by uploading the RFQ document</p>
+              <input
+                type="file"
+                accept=".pdf"
+                onChange={handleRfqUpload}
+                className="hidden"
+                id="rfq-upload"
+                disabled={uploadingRfq}
+              />
+              <label htmlFor="rfq-upload">
+                <Button asChild disabled={uploadingRfq} size="lg" className="cursor-pointer">
+                  <span>
+                    {uploadingRfq ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Uploading...</>
                     ) : (
-                      <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                      <><Upload className="h-4 w-4 mr-2" /> Choose File</>
                     )}
-                    <span className="font-semibold capitalize">{project.comparisonStatus}</span>
+                  </span>
+                </Button>
+              </label>
+            </div>
+          )}
+        </div>
+
+        {/* Step 2: PO (only show after RFQ) */}
+        {rfqDocument && (
+          <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+            {governmentOrder ? (
+              <div className="p-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
+                    <CheckCircle className="h-5 w-5 text-white" />
                   </div>
-                  <p className="text-sm">{project.comparisonResults.summary}</p>
+                  <div className="flex-1">
+                    <p className="font-semibold text-gray-900">PO Received</p>
+                    <p className="text-sm text-gray-500">PO# {governmentOrder.poNumber}</p>
+                  </div>
+                  <Link href={`/orders/${governmentOrder.id}`}>
+                    <Button variant="outline">
+                      View Order
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </Link>
                 </div>
-
-                {/* Matches */}
-                {project.comparisonResults.matches?.length > 0 && (
-                  <div>
-                    <h4 className="font-medium mb-2 flex items-center gap-2">
-                      <Check className="h-4 w-4 text-green-600" />
-                      Matches ({project.comparisonResults.matches.length})
-                    </h4>
-                    <div className="space-y-1">
-                      {project.comparisonResults.matches.map((m, i) => (
-                        <div key={i} className="flex items-center gap-2 text-sm p-2 bg-green-50 rounded">
-                          <span className="font-medium w-32">{m.field}:</span>
-                          <span className="text-gray-600">{m.rfqValue || m.poValue}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Mismatches */}
-                {project.comparisonResults.mismatches?.length > 0 && (
-                  <div>
-                    <h4 className="font-medium mb-2 flex items-center gap-2">
-                      <X className="h-4 w-4 text-red-600" />
-                      Mismatches ({project.comparisonResults.mismatches.length})
-                    </h4>
-                    <div className="space-y-2">
-                      {project.comparisonResults.mismatches.map((m, i) => (
-                        <div key={i} className="p-2 bg-red-50 rounded border border-red-200">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{m.field}</span>
-                            <span
-                              className={`text-xs px-1.5 py-0.5 rounded ${
-                                m.severity === "high"
-                                  ? "bg-red-200 text-red-800"
-                                  : m.severity === "medium"
-                                  ? "bg-yellow-200 text-yellow-800"
-                                  : "bg-gray-200 text-gray-800"
-                              }`}
-                            >
-                              {m.severity}
-                            </span>
-                          </div>
-                          <div className="text-sm mt-1 grid grid-cols-2 gap-2">
-                            <div>
-                              <span className="text-gray-500">RFQ:</span> {m.rfqValue || "N/A"}
-                            </div>
-                            <div>
-                              <span className="text-gray-500">PO:</span> {m.poValue || "N/A"}
-                            </div>
-                          </div>
-                          {m.note && <p className="text-xs text-gray-600 mt-1">{m.note}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Recommendations */}
-                {project.comparisonResults.recommendations?.length > 0 && (
-                  <div className="p-3 bg-blue-50 rounded border border-blue-200">
-                    <h4 className="font-medium mb-2">Recommendations</h4>
-                    <ul className="text-sm space-y-1">
-                      {project.comparisonResults.recommendations.map((r, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="text-blue-600">•</span>
-                          {r}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-500">
-                <RefreshCw className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                <p>Upload both RFQ and PO, then run comparison</p>
-                <p className="text-sm">AI will identify matches and discrepancies</p>
+              <div className="p-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+                    <Package className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-gray-900">Waiting for PO</p>
+                    <p className="text-sm text-gray-500">Upload when received</p>
+                  </div>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={handlePoUpload}
+                    className="hidden"
+                    id="po-upload"
+                    disabled={uploadingPo}
+                  />
+                  <label htmlFor="po-upload">
+                    <Button asChild variant="outline" disabled={uploadingPo} className="cursor-pointer">
+                      <span>
+                        {uploadingPo ? (
+                          <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Uploading...</>
+                        ) : (
+                          <><Upload className="h-4 w-4 mr-2" /> Upload PO</>
+                        )}
+                      </span>
+                    </Button>
+                  </label>
+                </div>
               </div>
             )}
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-}
+          </div>
+        )}
 
-function StatusCard({
-  icon,
-  label,
-  status,
-  detail,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  status: string;
-  detail: string;
-}) {
-  const statusColors: Record<string, string> = {
-    pending: "bg-gray-100 text-gray-600",
-    uploaded: "bg-green-100 text-green-600",
-    sent: "bg-purple-100 text-purple-600",
-    complete: "bg-green-100 text-green-600",
-  };
-
-  return (
-    <div className={`p-4 rounded-lg ${statusColors[status] || statusColors.pending}`}>
-      <div className="flex items-center gap-2 mb-1">
-        {icon}
-        <span className="font-medium">{label}</span>
       </div>
-      <p className="text-sm truncate">{detail}</p>
     </div>
   );
 }

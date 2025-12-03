@@ -987,45 +987,28 @@ export default function RFQFillPage() {
           </CardContent>
         </Card>
 
-        {/* Action Buttons */}
-        <div className="sticky bottom-4 bg-background/95 backdrop-blur p-4 rounded-lg border shadow-lg space-y-3">
-          {/* Main Row */}
-          <div className="flex gap-4">
-            <Button onClick={handleSave} disabled={saving} variant="outline" className="flex-1">
-              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              Save Draft
-            </Button>
-            <Button onClick={handleGenerate} disabled={generating} className="flex-[2] bg-blue-600 hover:bg-blue-700">
-              {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-              Generate Filled PDF
-            </Button>
-          </div>
-
-          {/* Manual Fill Option */}
-          <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
-            <div className="flex-1 text-sm">
-              <p className="font-medium text-amber-800">PDF fields not aligning correctly?</p>
-              <p className="text-amber-700">Download the original, fill manually in Adobe, then upload back.</p>
-            </div>
-            <div className="flex gap-2 shrink-0">
+        {/* Action Buttons - Simplified */}
+        <div className="sticky bottom-4 bg-white p-6 rounded-2xl border shadow-lg space-y-4">
+          {/* Primary: Manual fill workflow */}
+          <div className="space-y-3">
+            <p className="text-sm text-gray-500 text-center">Fill the RFQ in Adobe, then upload</p>
+            <div className="flex gap-3">
               {rfqData?.s3Url && (
-                <Button variant="outline" size="sm" asChild className="border-amber-300 hover:bg-amber-100">
-                  <a href={rfqData.s3Url} target="_blank" rel="noopener noreferrer" download>
-                    <ExternalLink className="h-4 w-4 mr-1" />
-                    Download Original
+                <Button variant="outline" size="lg" asChild className="flex-1 h-12">
+                  <a href={rfqData.s3Url} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Download RFQ
                   </a>
                 </Button>
               )}
               <Button
-                variant="outline"
-                size="sm"
+                size="lg"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="border-amber-300 hover:bg-amber-100"
+                className="flex-1 h-12 bg-blue-600 hover:bg-blue-700"
               >
-                {uploading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FileUp className="h-4 w-4 mr-1" />}
-                Upload Completed
+                {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileUp className="h-4 w-4 mr-2" />}
+                Upload Filled RFQ
               </Button>
               <input
                 ref={fileInputRef}
@@ -1035,6 +1018,14 @@ export default function RFQFillPage() {
                 onChange={handleUploadCompleted}
               />
             </div>
+          </div>
+
+          {/* Secondary: Save draft */}
+          <div className="pt-3 border-t">
+            <Button onClick={handleSave} disabled={saving} variant="ghost" className="w-full text-gray-500">
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Save Draft
+            </Button>
           </div>
         </div>
       </div>
