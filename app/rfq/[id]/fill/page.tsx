@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Download, Save, ChevronDown, ChevronRight, Building2, FileText, Package, DollarSign, Truck, Plus, Trash2, AlertCircle, CheckCircle2, ExternalLink, ClipboardList, Calendar, MapPin, Beaker } from "lucide-react";
+import { Loader2, Download, Save, ChevronDown, ChevronRight, Building2, FileText, Package, DollarSign, Truck, Plus, Trash2, AlertCircle, CheckCircle2, ExternalLink, ClipboardList, Calendar, MapPin, Beaker, Upload, FileUp } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 
@@ -174,8 +174,10 @@ export default function RFQFillPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [companyInfoOpen, setCompanyInfoOpen] = useState(false);
   const [certificationsOpen, setCertificationsOpen] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchRFQData();
@@ -361,6 +363,71 @@ export default function RFQFillPage() {
       alert("Failed to generate PDF");
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleUploadCompleted = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      alert("Please upload a PDF file");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      // Step 1: Get presigned URL for upload
+      const presignResponse = await fetch("/api/s3/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name, contentType: "application/pdf" }),
+      });
+
+      if (!presignResponse.ok) throw new Error("Failed to get upload URL");
+      const { url, key } = await presignResponse.json();
+
+      // Step 2: Upload file to S3
+      const uploadResponse = await fetch(url, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": "application/pdf" },
+      });
+
+      if (!uploadResponse.ok) throw new Error("Failed to upload file to S3");
+
+      // Construct the public URL
+      const bucketUrl = `https://${process.env.NEXT_PUBLIC_AWS_S3_BUCKET || "simurgh-rfq-bucket"}.s3.${process.env.NEXT_PUBLIC_AWS_REGION || "us-east-1"}.amazonaws.com`;
+      const pdfUrl = `${bucketUrl}/${key}`;
+
+      // Step 3: Save to database
+      const saveResponse = await fetch(`/api/rfq/${rfqId}/upload-completed`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pdfUrl, s3Key: key, responseData: formData }),
+      });
+
+      if (!saveResponse.ok) throw new Error("Failed to save uploaded PDF");
+
+      // Show success toast
+      const toast = document.createElement("div");
+      toast.className = "fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50 flex items-center gap-2";
+      toast.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Completed PDF uploaded!';
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+
+      // Redirect to history
+      setTimeout(() => {
+        router.push("/history");
+      }, 1500);
+    } catch (error) {
+      console.error("Error uploading completed PDF:", error);
+      alert("Failed to upload completed PDF");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   };
 
@@ -921,15 +988,54 @@ export default function RFQFillPage() {
         </Card>
 
         {/* Action Buttons */}
-        <div className="flex gap-4 sticky bottom-4 bg-background/95 backdrop-blur p-4 rounded-lg border shadow-lg">
-          <Button onClick={handleSave} disabled={saving} variant="outline" className="flex-1">
-            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            Save Draft
-          </Button>
-          <Button onClick={handleGenerate} disabled={generating} className="flex-[2] bg-blue-600 hover:bg-blue-700">
-            {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-            Generate Filled PDF
-          </Button>
+        <div className="sticky bottom-4 bg-background/95 backdrop-blur p-4 rounded-lg border shadow-lg space-y-3">
+          {/* Main Row */}
+          <div className="flex gap-4">
+            <Button onClick={handleSave} disabled={saving} variant="outline" className="flex-1">
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Save Draft
+            </Button>
+            <Button onClick={handleGenerate} disabled={generating} className="flex-[2] bg-blue-600 hover:bg-blue-700">
+              {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              Generate Filled PDF
+            </Button>
+          </div>
+
+          {/* Manual Fill Option */}
+          <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
+            <div className="flex-1 text-sm">
+              <p className="font-medium text-amber-800">PDF fields not aligning correctly?</p>
+              <p className="text-amber-700">Download the original, fill manually in Adobe, then upload back.</p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              {rfqData?.s3Url && (
+                <Button variant="outline" size="sm" asChild className="border-amber-300 hover:bg-amber-100">
+                  <a href={rfqData.s3Url} target="_blank" rel="noopener noreferrer" download>
+                    <ExternalLink className="h-4 w-4 mr-1" />
+                    Download Original
+                  </a>
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="border-amber-300 hover:bg-amber-100"
+              >
+                {uploading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FileUp className="h-4 w-4 mr-1" />}
+                Upload Completed
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                className="hidden"
+                onChange={handleUploadCompleted}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>
