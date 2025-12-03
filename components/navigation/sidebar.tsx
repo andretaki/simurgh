@@ -64,9 +64,12 @@ export default function Sidebar() {
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-700">
           <Link href="/" className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-amber-500 rounded flex items-center justify-center font-bold text-slate-900">
-              S
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/Senmurv.svg"
+              alt="Simurgh"
+              className="w-8 h-8 invert"
+            />
             {!isCollapsed && (
               <div>
                 <h1 className="font-bold text-white">Simurgh</h1>
