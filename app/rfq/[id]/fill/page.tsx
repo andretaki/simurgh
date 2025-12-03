@@ -251,7 +251,7 @@ export default function RFQFillPage() {
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-2xl mx-auto px-6 py-4">
+        <div className="max-w-7xl mx-auto px-6 py-4">
           <Link
             href="/projects"
             className="inline-flex items-center text-gray-500 hover:text-gray-900 transition-colors mb-3"
@@ -280,7 +280,45 @@ export default function RFQFillPage() {
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
+      {/* Split Layout: PDF Preview + Form */}
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+          {/* Left: PDF Preview */}
+          <div className="lg:sticky lg:top-24 lg:h-[calc(100vh-120px)]">
+            <div className="bg-white rounded-2xl border shadow-sm h-full overflow-hidden flex flex-col">
+              <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-700">PDF Preview</span>
+                {rfqData.s3Url && (
+                  <a
+                    href={rfqData.s3Url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                  >
+                    Open in new tab
+                    <Download className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+              <div className="flex-1 bg-gray-100">
+                {rfqData.s3Url ? (
+                  <iframe
+                    src={`${rfqData.s3Url}#toolbar=0&navpanes=0`}
+                    className="w-full h-full"
+                    title="RFQ PDF Preview"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-400">
+                    No PDF available
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Form */}
+          <div className="space-y-6">
 
         {/* What They Need */}
         {firstItem && (
@@ -514,7 +552,9 @@ export default function RFQFillPage() {
           </div>
         </div>
 
-      </div>
+          </div> {/* End Right: Form */}
+        </div> {/* End grid */}
+      </div> {/* End Split Layout */}
     </div>
   );
 }
