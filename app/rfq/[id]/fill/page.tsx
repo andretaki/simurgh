@@ -15,42 +15,33 @@ import {
   Package,
   FileText,
   Building2,
+  Truck,
+  ClipboardList,
+  Box,
 } from "lucide-react";
-
-interface ExtractedItem {
-  itemNumber?: string;
-  quantity?: number;
-  unit?: string;
-  description?: string;
-  nsn?: string;
-  partNumber?: string;
-  manufacturerPartNumber?: string;
-  unitOfIssue?: string;
-  specifications?: string;
-  hazmat?: boolean;
-  unNumber?: string;
-}
+import type { RfqSummary } from "@/lib/rfq-extraction-prompt";
 
 interface RFQData {
   id: number;
   fileName: string;
   s3Url: string;
   extractedFields: {
+    rfqSummary?: RfqSummary;
+    // Legacy fields for backward compatibility
     rfqNumber?: string;
-    rfqDate?: string;
-    quoteFirmUntil?: string;
     requestedReplyDate?: string;
-    deliveryBeforeDate?: string;
     contractingOffice?: string;
-    primeContractNumber?: string;
-    pocName?: string;
-    pocEmail?: string;
-    pocPhone?: string;
-    pocFax?: string;
-    items?: ExtractedItem[];
-    clauseCodes?: string[];
-    defaultPaymentTerms?: string;
-    defaultFob?: string;
+    items?: Array<{
+      itemNumber?: string;
+      quantity?: number;
+      unit?: string;
+      description?: string;
+      nsn?: string;
+      partNumber?: string;
+      manufacturerPartNumber?: string;
+      hazmat?: boolean;
+      unNumber?: string;
+    }>;
   };
 }
 
@@ -83,7 +74,6 @@ export default function RFQFillPage() {
   const [profileLoaded, setProfileLoaded] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  // For PDF boilerplate fill
   const [profileData, setProfileData] = useState({
     cageCode: "",
     samUei: "",
@@ -238,8 +228,20 @@ export default function RFQFillPage() {
     );
   }
 
-  const extracted = rfqData.extractedFields || {};
-  const items = extracted.items || [];
+  // Support both new rfqSummary format and legacy format
+  const rfqSummary = rfqData.extractedFields?.rfqSummary;
+  const header = rfqSummary?.header;
+  const buyer = rfqSummary?.buyer;
+  const items = rfqSummary?.items || rfqData.extractedFields?.items || [];
+  const hazmat = rfqSummary?.hazmat;
+  const packaging = rfqSummary?.packaging;
+  const lotControl = rfqSummary?.lotControl;
+  const docsRequired = rfqSummary?.documentationRequired || [];
+
+  // For backward compatibility
+  const rfqNumber = header?.rfqNumber || rfqData.extractedFields?.rfqNumber;
+  const requestedReplyDate = header?.requestedReplyDate || rfqData.extractedFields?.requestedReplyDate;
+  const contractingOffice = buyer?.contractingOffice || rfqData.extractedFields?.contractingOffice;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
@@ -257,16 +259,16 @@ export default function RFQFillPage() {
           <div className="flex items-start justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                RFQ #{extracted.rfqNumber || rfqData.fileName}
+                RFQ #{rfqNumber || rfqData.fileName}
               </h1>
-              <p className="text-gray-500">{extracted.contractingOffice}</p>
+              <p className="text-gray-500">{contractingOffice}</p>
             </div>
 
-            {extracted.requestedReplyDate && (
+            {requestedReplyDate && (
               <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-full">
                 <Clock className="h-4 w-4 text-amber-600" />
                 <span className="text-sm font-medium text-amber-700">
-                  Due {extracted.requestedReplyDate}
+                  Due {requestedReplyDate}
                 </span>
               </div>
             )}
@@ -322,46 +324,46 @@ export default function RFQFillPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-sm">
-                {extracted.rfqDate && (
+                {header?.rfqDate && (
                   <div>
                     <p className="text-gray-400 text-xs uppercase">RFQ Date</p>
-                    <p className="font-medium">{extracted.rfqDate}</p>
+                    <p className="font-medium">{header.rfqDate}</p>
                   </div>
                 )}
-                {extracted.requestedReplyDate && (
+                {requestedReplyDate && (
                   <div>
                     <p className="text-gray-400 text-xs uppercase">Reply By</p>
-                    <p className="font-medium text-amber-600">{extracted.requestedReplyDate}</p>
+                    <p className="font-medium text-amber-600">{requestedReplyDate}</p>
                   </div>
                 )}
-                {extracted.deliveryBeforeDate && (
+                {header?.deliveryBeforeDate && (
                   <div>
                     <p className="text-gray-400 text-xs uppercase">Deliver By</p>
-                    <p className="font-medium">{extracted.deliveryBeforeDate}</p>
+                    <p className="font-medium">{header.deliveryBeforeDate}</p>
                   </div>
                 )}
-                {extracted.primeContractNumber && (
+                {buyer?.primeContractNumber && (
                   <div>
                     <p className="text-gray-400 text-xs uppercase">Prime Contract</p>
-                    <p className="font-mono text-xs">{extracted.primeContractNumber}</p>
+                    <p className="font-mono text-xs">{buyer.primeContractNumber}</p>
                   </div>
                 )}
               </div>
 
               {/* POC Info */}
-              {(extracted.pocName || extracted.pocEmail || extracted.pocPhone) && (
+              {(buyer?.pocName || buyer?.pocEmail || buyer?.pocPhone) && (
                 <div className="mt-4 pt-4 border-t">
                   <p className="text-gray-400 text-xs uppercase mb-2">Point of Contact</p>
                   <div className="space-y-1 text-sm">
-                    {extracted.pocName && <p className="font-medium">{extracted.pocName}</p>}
-                    {extracted.pocEmail && <p className="text-blue-600">{extracted.pocEmail}</p>}
-                    {extracted.pocPhone && <p className="text-gray-600">{extracted.pocPhone}</p>}
+                    {buyer?.pocName && <p className="font-medium">{buyer.pocName}</p>}
+                    {buyer?.pocEmail && <p className="text-blue-600">{buyer.pocEmail}</p>}
+                    {buyer?.pocPhone && <p className="text-gray-600">{buyer.pocPhone}</p>}
                   </div>
                 </div>
               )}
             </div>
 
-            {/* LINE ITEMS - Full Detail */}
+            {/* LINE ITEMS */}
             <div className="bg-white rounded-2xl border p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Package className="h-5 w-5 text-gray-400" />
@@ -372,10 +374,7 @@ export default function RFQFillPage() {
 
               <div className="space-y-6">
                 {items.map((item, index) => (
-                  <div
-                    key={index}
-                    className={`${index > 0 ? "pt-6 border-t" : ""}`}
-                  >
+                  <div key={index} className={`${index > 0 ? "pt-6 border-t" : ""}`}>
                     {/* Item Header */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-baseline gap-3">
@@ -393,12 +392,24 @@ export default function RFQFillPage() {
                       )}
                     </div>
 
-                    {/* Full Description */}
-                    <div className="bg-gray-50 rounded-lg p-4 mb-3">
-                      <p className="text-gray-400 text-xs uppercase mb-1">Description</p>
-                      <p className="text-gray-800 whitespace-pre-wrap text-sm leading-relaxed">
-                        {item.description || "No description"}
-                      </p>
+                    {/* Product Type & Description */}
+                    <div className="mb-3">
+                      {"productType" in item && item.productType && (
+                        <p className="text-lg font-semibold text-gray-900 mb-1">
+                          {item.productType}
+                        </p>
+                      )}
+                      {"shortDescription" in item && item.shortDescription && (
+                        <p className="text-gray-600 text-sm">
+                          {item.shortDescription}
+                        </p>
+                      )}
+                      {/* Legacy: full description */}
+                      {"description" in item && item.description && !("shortDescription" in item) && (
+                        <p className="text-gray-600 text-sm whitespace-pre-wrap">
+                          {item.description}
+                        </p>
+                      )}
                     </div>
 
                     {/* Part Numbers & IDs */}
@@ -411,40 +422,32 @@ export default function RFQFillPage() {
                       )}
                       {item.partNumber && (
                         <div className="bg-gray-50 rounded-lg p-3">
-                          <p className="text-gray-400 text-xs uppercase">Part Number / Spec</p>
+                          <p className="text-gray-400 text-xs uppercase">Part Number</p>
                           <p className="font-mono font-medium text-gray-900">{item.partNumber}</p>
                         </div>
                       )}
                       {item.manufacturerPartNumber && (
                         <div className="bg-gray-50 rounded-lg p-3">
-                          <p className="text-gray-400 text-xs uppercase">Manufacturer P/N</p>
+                          <p className="text-gray-400 text-xs uppercase">Mfr P/N</p>
                           <p className="font-mono font-medium text-gray-900">{item.manufacturerPartNumber}</p>
                         </div>
                       )}
-                      {item.unitOfIssue && (
+                      {"specification" in item && item.specification && (
                         <div className="bg-gray-50 rounded-lg p-3">
-                          <p className="text-gray-400 text-xs uppercase">Unit of Issue</p>
-                          <p className="text-gray-900 text-sm">{item.unitOfIssue}</p>
+                          <p className="text-gray-400 text-xs uppercase">Spec</p>
+                          <p className="text-gray-900 text-sm">{item.specification}</p>
                         </div>
                       )}
                     </div>
 
-                    {/* Specifications */}
-                    {item.specifications && (
-                      <div className="bg-gray-50 rounded-lg p-3 mb-3">
-                        <p className="text-gray-400 text-xs uppercase mb-1">Specifications</p>
-                        <p className="text-gray-800 text-sm">{item.specifications}</p>
-                      </div>
-                    )}
-
                     {/* Hazmat Warning */}
-                    {item.hazmat && (
+                    {(("isHazmat" in item && item.isHazmat) || ("hazmat" in item && item.hazmat)) && (
                       <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
                         <AlertTriangle className="h-5 w-5 text-red-600" />
                         <div>
                           <p className="font-medium text-red-900">HAZMAT Material</p>
                           {item.unNumber && (
-                            <p className="text-sm text-red-700">UN Number: {item.unNumber}</p>
+                            <p className="text-sm text-red-700">UN: {item.unNumber}</p>
                           )}
                         </div>
                       </div>
@@ -453,12 +456,140 @@ export default function RFQFillPage() {
                 ))}
 
                 {items.length === 0 && (
-                  <p className="text-gray-400 text-center py-4">
-                    No line items extracted
-                  </p>
+                  <p className="text-gray-400 text-center py-4">No line items extracted</p>
                 )}
               </div>
             </div>
+
+            {/* HAZMAT Details */}
+            {hazmat?.isHazmat && (
+              <div className="bg-red-50 rounded-2xl border border-red-200 p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <AlertTriangle className="h-5 w-5 text-red-600" />
+                  <h2 className="font-semibold text-red-900">Hazmat Requirements</h2>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  {hazmat.unNumber && (
+                    <div>
+                      <p className="text-red-400 text-xs uppercase">UN Number</p>
+                      <p className="font-mono font-medium text-red-900">{hazmat.unNumber}</p>
+                    </div>
+                  )}
+                  {hazmat.properShippingName && (
+                    <div>
+                      <p className="text-red-400 text-xs uppercase">Shipping Name</p>
+                      <p className="font-medium text-red-900">{hazmat.properShippingName}</p>
+                    </div>
+                  )}
+                  {hazmat.hazardClass && (
+                    <div>
+                      <p className="text-red-400 text-xs uppercase">Hazard Class</p>
+                      <p className="font-medium text-red-900">{hazmat.hazardClass}</p>
+                    </div>
+                  )}
+                  {hazmat.packingGroup && (
+                    <div>
+                      <p className="text-red-400 text-xs uppercase">Packing Group</p>
+                      <p className="font-medium text-red-900">{hazmat.packingGroup}</p>
+                    </div>
+                  )}
+                </div>
+
+                {hazmat.regulations && hazmat.regulations.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-red-200">
+                    <p className="text-red-400 text-xs uppercase mb-2">Regulations</p>
+                    <div className="flex flex-wrap gap-2">
+                      {hazmat.regulations.map((reg, i) => (
+                        <span key={i} className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded">
+                          {reg}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Packaging Requirements */}
+            {packaging && (packaging.unitContainer || packaging.outerPackaging || packaging.milStandards?.length) && (
+              <div className="bg-white rounded-2xl border p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Box className="h-5 w-5 text-gray-400" />
+                  <h2 className="font-semibold text-gray-900">Packaging Requirements</h2>
+                </div>
+
+                <div className="space-y-3 text-sm">
+                  {packaging.unitContainer && (
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-gray-400 text-xs uppercase mb-1">Unit Container</p>
+                      <p className="text-gray-800">{packaging.unitContainer}</p>
+                    </div>
+                  )}
+                  {packaging.outerPackaging && (
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-gray-400 text-xs uppercase mb-1">Outer Packaging</p>
+                      <p className="text-gray-800">{packaging.outerPackaging}</p>
+                    </div>
+                  )}
+                  {packaging.milStandards && packaging.milStandards.length > 0 && (
+                    <div>
+                      <p className="text-gray-400 text-xs uppercase mb-2">MIL Standards</p>
+                      <div className="flex flex-wrap gap-2">
+                        {packaging.milStandards.map((std, i) => (
+                          <span key={i} className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded font-mono">
+                            {std}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {packaging.specialMarkings && packaging.specialMarkings.length > 0 && (
+                    <div>
+                      <p className="text-gray-400 text-xs uppercase mb-2">Special Markings</p>
+                      <ul className="list-disc list-inside text-gray-700 space-y-1">
+                        {packaging.specialMarkings.map((mark, i) => (
+                          <li key={i}>{mark}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Lot Control */}
+            {lotControl?.lotControlRequired && (
+              <div className="bg-amber-50 rounded-2xl border border-amber-200 p-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <ClipboardList className="h-5 w-5 text-amber-600" />
+                  <h2 className="font-semibold text-amber-900">Lot Control Required</h2>
+                </div>
+                {lotControl.lotMarkingText && (
+                  <p className="text-sm text-amber-800">
+                    <span className="font-medium">Marking:</span> {lotControl.lotMarkingText}
+                  </p>
+                )}
+                {lotControl.lotSegregationRequired && (
+                  <p className="text-sm text-amber-800 mt-1">Lot segregation required</p>
+                )}
+              </div>
+            )}
+
+            {/* Documentation Required */}
+            {docsRequired.length > 0 && (
+              <div className="bg-white rounded-2xl border p-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <FileText className="h-5 w-5 text-gray-400" />
+                  <h2 className="font-semibold text-gray-900">Documentation Required</h2>
+                </div>
+                <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
+                  {docsRequired.map((doc, i) => (
+                    <li key={i}>{doc}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* Company Boilerplate Data */}
             {profileLoaded && (
@@ -534,7 +665,6 @@ export default function RFQFillPage() {
               <h2 className="font-semibold text-gray-900 mb-4">Actions</h2>
 
               <div className="space-y-3">
-                {/* Generate Pre-filled PDF */}
                 <button
                   onClick={handleGenerate}
                   disabled={generating || !profileLoaded}

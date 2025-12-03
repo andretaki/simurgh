@@ -5,14 +5,11 @@ import { downloadFromS3, getPresignedDownloadUrl } from "@/lib/aws/s3";
 import pdfParse from "pdf-parse";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { eq } from "drizzle-orm";
+import { RFQ_EXTRACTION_PROMPT } from "@/lib/rfq-extraction-prompt";
 
 // Initialize Gemini with API key
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
-
-
-
 
 export async function POST(request: NextRequest) {
   console.log("=== /api/rfq/process called ===");
@@ -29,107 +26,68 @@ export async function POST(request: NextRequest) {
     }
 
     // Create initial database record
-    const [rfqDoc] = await db.insert(rfqDocuments).values({
-      fileName,
-      s3Key,
-      fileSize,
-      mimeType,
-      status: "processing",
-    }).returning();
+    const [rfqDoc] = await db
+      .insert(rfqDocuments)
+      .values({
+        fileName,
+        s3Key,
+        fileSize,
+        mimeType,
+        status: "processing",
+      })
+      .returning();
 
     try {
       // Download PDF from S3
       const pdfBuffer = await downloadFromS3(s3Key);
-      
+
       // Extract text from PDF
       const pdfData = await pdfParse(pdfBuffer);
       const extractedText = pdfData.text;
 
-      // Use Gemini 2.5 Flash to identify fields - enhanced for ASRC Federal and government RFQ formats
-      const systemPrompt = `You are an expert at extracting information from government RFQ (Request for Quote) documents, particularly ASRC Federal and DLA formats.
-
-Extract ALL of the following fields and return as JSON:
-
-**RFQ HEADER INFO:**
-- rfqNumber: The RFQ number (e.g., "821 - 36208263")
-- rfqDate: Date the RFQ was issued (ISO format)
-- quoteFirmUntil: Date prices must be firm until (ISO format)
-- requestedReplyDate: When they need your response by (ISO format)
-- deliveryBeforeDate: Required delivery date (ISO format)
-
-**BUYER/CONTRACTING INFO:**
-- contractingOffice: The contracting agency (e.g., "ASRC Federal Facilities Logistics")
-- primeContractNumber: Any prime contract number referenced
-- pocName: Point of contact name
-- pocEmail: Point of contact email
-- pocPhone: Point of contact phone
-- pocFax: Point of contact fax
-
-**LINE ITEMS (array called "items"):**
-For each item, extract:
-- itemNumber: Line item number (e.g., "1", "Item 1")
-- quantity: Numeric quantity requested
-- unit: Unit of measure (e.g., "Drum", "EA", "LB")
-- description: Full product description
-- nsn: National Stock Number if present (e.g., "6810-00-281-2686")
-- partNumber: Part number or specification (e.g., "A-A-59123")
-- manufacturerPartNumber: Manufacturer's P/N if specified
-- unitOfIssue: How the item is packaged (e.g., "1 DR = 100 LB Net Wt")
-- specifications: Any MIL-SPEC or technical specifications
-- hazmat: Boolean - is this a hazardous material?
-- unNumber: UN Number for hazmat (e.g., "UN3288")
-
-**FORM FIELD REQUIREMENTS (what the RFQ asks you to fill):**
-- requiresCageCode: boolean
-- requiresSamUei: boolean
-- requiresNaicsCode: boolean
-- requiresBusinessType: boolean
-- requiresCertifications: boolean
-- requiresPaymentTerms: boolean
-- requiresFobTerms: boolean
-- requiresShippingCost: boolean
-- requiresCountryOfOrigin: boolean
-- requiresDeliveryDays: boolean
-- requiresUnitCost: boolean
-- requiresPriceBreaks: boolean
-- requiresManufacturer: boolean
-- requiresMinimumQty: boolean
-
-**SPECIAL CLAUSES (array of clause codes):**
-- clauseCodes: Array of clause codes mentioned (e.g., ["P724", "P710", "C903"])
-
-**DEFAULT TERMS SHOWN:**
-- defaultPaymentTerms: What payment terms they show as default (e.g., "Net 45")
-- defaultFob: Default FOB terms shown
-
-Return ONLY valid JSON, no markdown formatting or code blocks.`;
-
+      // Use Gemini to extract structured RFQ data
       const result = await model.generateContent({
         contents: [
           {
             role: "user",
             parts: [
-              { text: systemPrompt + "\n\nHere is the RFQ document text to extract from:\n\n" + extractedText.substring(0, 30000) }
-            ]
-          }
+              {
+                text:
+                  RFQ_EXTRACTION_PROMPT +
+                  "\n\nHere is the RFQ document text to extract from:\n\n" +
+                  extractedText.substring(0, 30000),
+              },
+            ],
+          },
         ],
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 4000,
+          maxOutputTokens: 8000,
         },
       });
 
       const completion = result.response;
 
-      let extractedFields: any = {};
+      let extractedFields: Record<string, unknown> = {};
       try {
-        // Get text from Gemini response
         let content = completion.text() || "{}";
+        console.log(
+          "Gemini extraction result (first 1000 chars):",
+          content.substring(0, 1000)
+        );
 
         // Clean up markdown code blocks if present
-        content = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+        content = content
+          .replace(/```json\n?/gi, "")
+          .replace(/```\n?/g, "")
+          .trim();
 
-        console.log("Gemini extraction result (first 500 chars):", content.substring(0, 500));
+        // Try to find JSON object in the response
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          content = jsonMatch[0];
+        }
+
         extractedFields = JSON.parse(content);
       } catch (e) {
         console.error("Failed to parse AI response:", e);
@@ -139,15 +97,23 @@ Return ONLY valid JSON, no markdown formatting or code blocks.`;
       // Get presigned URL for accessing the PDF
       const s3Url = await getPresignedDownloadUrl(s3Key);
 
+      // Extract rfqNumber from the structured response
+      const rfqSummary = (extractedFields as Record<string, unknown>)
+        .rfqSummary as Record<string, unknown> | undefined;
+      const header = rfqSummary?.header as Record<string, unknown> | undefined;
+      const buyer = rfqSummary?.buyer as Record<string, unknown> | undefined;
+      const rfqNumber = (header?.rfqNumber as string) || null;
+      const contractingOffice = (buyer?.contractingOffice as string) || null;
+
       // Update database with extracted data
-      await db.update(rfqDocuments)
+      await db
+        .update(rfqDocuments)
         .set({
-          extractedText: extractedText.substring(0, 10000), // Store first 10k chars
+          extractedText: extractedText.substring(0, 10000),
           extractedFields,
           s3Url,
-          rfqNumber: extractedFields.rfqNumber || null,
-          dueDate: extractedFields.dueDate ? new Date(extractedFields.dueDate) : null,
-          contractingOffice: extractedFields.contractingOffice || null,
+          rfqNumber,
+          contractingOffice,
           status: "processed",
           updatedAt: new Date(),
         })
@@ -156,24 +122,26 @@ Return ONLY valid JSON, no markdown formatting or code blocks.`;
       return NextResponse.json({
         rfqId: rfqDoc.id,
         extractedFields,
-        message: "RFQ processed successfully"
+        message: "RFQ processed successfully",
       });
-
     } catch (processingError) {
       console.error("Error during processing:", processingError);
-      
+
       // Update status to failed
-      await db.update(rfqDocuments)
+      await db
+        .update(rfqDocuments)
         .set({
           status: "failed",
-          processingError: processingError instanceof Error ? processingError.message : String(processingError),
+          processingError:
+            processingError instanceof Error
+              ? processingError.message
+              : String(processingError),
           updatedAt: new Date(),
         })
         .where(eq(rfqDocuments.id, rfqDoc.id));
 
       throw processingError;
     }
-
   } catch (error) {
     console.error("Error processing RFQ:", error);
     return NextResponse.json(
