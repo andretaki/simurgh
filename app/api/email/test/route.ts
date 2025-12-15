@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { rfqDocuments } from "@/drizzle/migrations/schema";
 import pdfParse from "pdf-parse";
 import OpenAI from "openai";
+import { normalizeRfqNumber } from "@/lib/rfq-number";
 import { eq } from "drizzle-orm";
 
 // Force dynamic rendering to prevent static generation errors
@@ -140,6 +141,7 @@ export async function GET(request: NextRequest) {
             // Remove markdown code blocks if present
             content = content.replace(/^```json\s*/i, '').replace(/```\s*$/, '');
             const extractedFields = JSON.parse(content);
+            const normalizedRfqNumber = normalizeRfqNumber(extractedFields.rfqNumber);
 
             // Update database
             await db.update(rfqDocuments)
@@ -154,7 +156,7 @@ export async function GET(request: NextRequest) {
                   emailReceivedAt: email.receivedDateTime,
                   emailWasRead: email.isRead,
                 },
-                rfqNumber: extractedFields.rfqNumber || null,
+                rfqNumber: normalizedRfqNumber,
                 dueDate: extractedFields.dueDate ? new Date(extractedFields.dueDate) : null,
                 contractingOffice: extractedFields.contractingOffice || null,
                 status: "processed",

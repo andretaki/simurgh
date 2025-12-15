@@ -18,6 +18,9 @@ import {
   Truck,
   ClipboardList,
   Box,
+  XCircle,
+  FileDown,
+  FileBadge,
 } from "lucide-react";
 import type { RfqSummary } from "@/lib/rfq-extraction-prompt";
 
@@ -71,10 +74,18 @@ export default function RFQFillPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generatingBranded, setGeneratingBranded] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+  // Vendor quote fields
+  const [vendorQuoteRef, setVendorQuoteRef] = useState("");
+  const [quoteValidUntil, setQuoteValidUntil] = useState("");
+  const [quoteNotes, setQuoteNotes] = useState("");
+
   const [profileData, setProfileData] = useState({
+    quoteRefNum: "",
     cageCode: "",
     samUei: "",
     naicsCode: "",
@@ -93,6 +104,27 @@ export default function RFQFillPage() {
     authorizedSignature: "",
     signatureDate: new Date().toISOString().split("T")[0],
     pricesFirmUntil: "",
+    noBidReason: "" as "" | "not_accepting" | "geographic" | "debarred" | "other",
+    noBidOtherText: "",
+    lineItems: [] as Array<{
+      itemNumber: string;
+      unitCost: string;
+      deliveryDays: string;
+      countryOfOrigin: string;
+      manufacturer: string;
+      isIawNsn: boolean;
+      minimumQty: string;
+      qtyUnitPack: string;
+      exceptionNote: string;
+      noBidReason: "" | "not_our_product" | "distributor_only" | "obsolete" | "out_of_stock" | "other";
+      noBidOtherText: string;
+      priceBreaks: Array<{
+        fromQty: number;
+        toQty: number;
+        unitCost: string;
+        deliveryDays: string;
+      }>;
+    }>,
   });
 
   useEffect(() => {
@@ -101,9 +133,11 @@ export default function RFQFillPage() {
 
   const fetchData = async () => {
     try {
+      let rfq: RFQData | null = null;
       const rfqResponse = await fetch(`/api/rfq/${rfqId}`);
       if (rfqResponse.ok) {
-        setRfqData(await rfqResponse.json());
+        rfq = await rfqResponse.json();
+        setRfqData(rfq);
       }
 
       const profileResponse = await fetch("/api/company-profile");
@@ -111,7 +145,31 @@ export default function RFQFillPage() {
         const profile = await profileResponse.json();
         if (profile) {
           setCompanyProfile(profile);
-          applyProfile(profile);
+          applyProfile(profile, rfq);
+        }
+      }
+
+      // Load existing draft/submitted response (if any) and merge into state.
+      const responseRes = await fetch(`/api/rfq/${rfqId}/response`);
+      if (responseRes.ok) {
+        const { response } = await responseRes.json();
+        if (response?.responseData && typeof response.responseData === "object") {
+          const saved = response.responseData as any;
+          setProfileData((prev) => {
+            const mergedLineItems = prev.lineItems.map((li, idx) => ({
+              ...li,
+              ...(saved.lineItems?.[idx] || {}),
+              priceBreaks: Array.isArray(saved.lineItems?.[idx]?.priceBreaks)
+                ? saved.lineItems[idx].priceBreaks
+                : li.priceBreaks,
+            }));
+
+            return {
+              ...prev,
+              ...saved,
+              lineItems: mergedLineItems,
+            };
+          });
         }
       }
 
@@ -122,11 +180,42 @@ export default function RFQFillPage() {
     }
   };
 
-  const applyProfile = (profile: CompanyProfile) => {
+  const applyProfile = (profile: CompanyProfile, rfq: RFQData | null) => {
     const firmUntil = new Date();
     firmUntil.setDate(firmUntil.getDate() + 30);
 
+    const rfqSummary = rfq?.extractedFields?.rfqSummary;
+    const extractedItems = (rfqSummary?.items || rfq?.extractedFields?.items || []) as Array<any>;
+    const lineItems = extractedItems.map((item, index) => ({
+      itemNumber: item?.itemNumber || String(index + 1),
+      unitCost: "",
+      deliveryDays: "",
+      countryOfOrigin: "USA",
+      manufacturer: profile.companyName || "",
+      isIawNsn: false,
+      minimumQty: "",
+      qtyUnitPack: "",
+      exceptionNote: "",
+      noBidReason: "" as "" | "not_our_product" | "distributor_only" | "obsolete" | "out_of_stock" | "other",
+      noBidOtherText: "",
+      priceBreaks: [] as Array<{ fromQty: number; toQty: number; unitCost: string; deliveryDays: string }>,
+    }));
+
+    const year = new Date().getFullYear();
+    const defaultQuoteRefNum = `AC-${year}-${Math.floor(Math.random() * 10000)}`;
+
+    // Generate vendor quote ref using the new format: ACQ-RFQ-{rfqNumber}-{seq}
+    const rfqNumber = rfqSummary?.header?.rfqNumber || rfq?.extractedFields?.rfqNumber;
+    const cleanRfqNum = rfqNumber ? rfqNumber.replace(/[^a-zA-Z0-9-]/g, "") : String(rfq?.id || "0");
+    const defaultVendorQuoteRef = `ACQ-RFQ-${cleanRfqNum}-1`;
+
+    // Set vendor quote fields
+    setVendorQuoteRef(defaultVendorQuoteRef);
+    setQuoteValidUntil(firmUntil.toISOString().split("T")[0]);
+    setQuoteNotes("");
+
     setProfileData({
+      quoteRefNum: defaultQuoteRefNum,
       cageCode: profile.cageCode || "",
       samUei: profile.samUei || "",
       naicsCode: profile.naicsCode || "",
@@ -145,9 +234,36 @@ export default function RFQFillPage() {
       authorizedSignature: profile.contactPerson || "",
       signatureDate: new Date().toISOString().split("T")[0],
       pricesFirmUntil: firmUntil.toISOString().split("T")[0],
+      noBidReason: "",
+      noBidOtherText: "",
+      lineItems,
     });
     setProfileLoaded(true);
   };
+
+  // Validation checklist - returns list of missing required fields
+  const getValidationErrors = (): string[] => {
+    const errors: string[] = [];
+
+    // Check line items have pricing (unless no-bid)
+    profileData.lineItems.forEach((item, idx) => {
+      if (!item.noBidReason && (!item.unitCost || item.unitCost.trim() === "")) {
+        errors.push(`Line ${item.itemNumber || idx + 1}: Unit price required`);
+      }
+    });
+
+    // Check at least one line item is bidding (or global no-bid is set)
+    const hasBiddingItems = profileData.lineItems.some((item) => !item.noBidReason && item.unitCost);
+    const isGlobalNoBid = !!profileData.noBidReason;
+    if (!hasBiddingItems && !isGlobalNoBid) {
+      errors.push("At least one line item must have pricing");
+    }
+
+    return errors;
+  };
+
+  const validationErrors = getValidationErrors();
+  const isReadyToGenerate = validationErrors.length === 0 || !!profileData.noBidReason;
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -155,7 +271,7 @@ export default function RFQFillPage() {
       const response = await fetch(`/api/rfq/${rfqId}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ responseData: profileData, boilerplateOnly: true }),
+        body: JSON.stringify({ responseData: profileData }),
       });
 
       if (!response.ok) throw new Error("Failed to generate PDF");
@@ -168,6 +284,128 @@ export default function RFQFillPage() {
     } finally {
       setGenerating(false);
     }
+  };
+
+  const handleGenerateBranded = async () => {
+    if (!isReadyToGenerate) {
+      alert("Please fill in all required fields before generating the quote.");
+      return;
+    }
+
+    setGeneratingBranded(true);
+    try {
+      const response = await fetch(`/api/rfq/${rfqId}/generate-branded`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          responseData: profileData,
+          vendorQuoteRef: vendorQuoteRef || undefined,
+          quoteValidUntil: quoteValidUntil || undefined,
+          notes: quoteNotes || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to generate branded quote PDF");
+      }
+
+      // Response is a PDF blob
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      // Get filename from header or use default
+      const contentDisposition = response.headers.get("Content-Disposition");
+      let filename = `AllianceChemicalQuote_${vendorQuoteRef}.pdf`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="([^"]+)"/);
+        if (match) filename = match[1];
+      }
+
+      // Update vendorQuoteRef from response header if server generated one
+      const serverQuoteRef = response.headers.get("X-Vendor-Quote-Ref");
+      if (serverQuoteRef && serverQuoteRef !== vendorQuoteRef) {
+        setVendorQuoteRef(serverQuoteRef);
+      }
+
+      // Trigger download
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Generate branded error:", error);
+      alert(error instanceof Error ? error.message : "Failed to generate branded quote PDF");
+    } finally {
+      setGeneratingBranded(false);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    setSavingDraft(true);
+    try {
+      const res = await fetch(`/api/rfq/${rfqId}/response`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ responseData: profileData }),
+      });
+      if (!res.ok) throw new Error("Failed to save draft");
+      alert("Draft saved");
+    } catch (error) {
+      console.error("Save draft error:", error);
+      alert("Failed to save draft");
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  const updateLineItem = (index: number, patch: Partial<(typeof profileData.lineItems)[number]>) => {
+    setProfileData((prev) => ({
+      ...prev,
+      lineItems: prev.lineItems.map((li, i) => (i === index ? { ...li, ...patch } : li)),
+    }));
+  };
+
+  const updatePriceBreak = (
+    itemIndex: number,
+    breakIndex: number,
+    patch: Partial<(typeof profileData.lineItems)[number]["priceBreaks"][number]>
+  ) => {
+    setProfileData((prev) => ({
+      ...prev,
+      lineItems: prev.lineItems.map((li, idx) => {
+        if (idx !== itemIndex) return li;
+        const next = li.priceBreaks.map((pb, j) => (j === breakIndex ? { ...pb, ...patch } : pb));
+        return { ...li, priceBreaks: next };
+      }),
+    }));
+  };
+
+  const addPriceBreak = (itemIndex: number) => {
+    setProfileData((prev) => ({
+      ...prev,
+      lineItems: prev.lineItems.map((li, idx) => {
+        if (idx !== itemIndex) return li;
+        if (li.priceBreaks.length >= 4) return li;
+        return {
+          ...li,
+          priceBreaks: [...li.priceBreaks, { fromQty: 0, toQty: 0, unitCost: "", deliveryDays: "" }],
+        };
+      }),
+    }));
+  };
+
+  const removePriceBreak = (itemIndex: number, breakIndex: number) => {
+    setProfileData((prev) => ({
+      ...prev,
+      lineItems: prev.lineItems.map((li, idx) => {
+        if (idx !== itemIndex) return li;
+        return { ...li, priceBreaks: li.priceBreaks.filter((_, j) => j !== breakIndex) };
+      }),
+    }));
   };
 
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -370,11 +608,18 @@ export default function RFQFillPage() {
                 <h2 className="font-semibold text-gray-900">
                   Line Items ({items.length})
                 </h2>
+                <span className="ml-auto text-xs text-gray-400">
+                  PDF fills matching item fields when available
+                </span>
               </div>
 
               <div className="space-y-6">
-                {items.map((item, index) => (
-                  <div key={index} className={`${index > 0 ? "pt-6 border-t" : ""}`}>
+                {items.map((item, index) => {
+                  const responseItem = profileData.lineItems[index];
+                  const pricingDisabled = profileData.noBidReason !== "";
+
+                  return (
+                    <div key={index} className={`${index > 0 ? "pt-6 border-t" : ""}`}>
                     {/* Item Header */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-baseline gap-3">
@@ -452,8 +697,226 @@ export default function RFQFillPage() {
                         </div>
                       </div>
                     )}
+
+                    {/* Pricing (boss fills these) */}
+                    <div className="mt-4 bg-gray-50 rounded-xl p-4 border">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-sm font-semibold text-gray-800">Pricing</p>
+                        {pricingDisabled && (
+                          <span className="text-xs text-gray-500">Disabled (No Bid)</span>
+                        )}
+                      </div>
+
+                      <div className="mb-3">
+                        <p className="text-gray-400 text-xs uppercase mb-1">Line Item Decision</p>
+                        <select
+                          value={responseItem?.noBidReason || ""}
+                          onChange={(e) =>
+                            updateLineItem(index, {
+                              noBidReason: e.target.value as any,
+                              noBidOtherText: e.target.value === "other" ? (responseItem?.noBidOtherText || "") : "",
+                              unitCost: e.target.value ? "" : (responseItem?.unitCost || ""),
+                              deliveryDays: e.target.value ? "" : (responseItem?.deliveryDays || ""),
+                            })
+                          }
+                          disabled={pricingDisabled}
+                          className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
+                        >
+                          <option value="">Bid this line item</option>
+                          <option value="not_our_product">No bid: Not our product</option>
+                          <option value="distributor_only">No bid: Distributor only</option>
+                          <option value="obsolete">No bid: Product obsolete</option>
+                          <option value="out_of_stock">No bid: Out of stock</option>
+                          <option value="other">No bid: Other</option>
+                        </select>
+                        {responseItem?.noBidReason === "other" && (
+                          <input
+                            value={responseItem?.noBidOtherText || ""}
+                            onChange={(e) => updateLineItem(index, { noBidOtherText: e.target.value })}
+                            placeholder="Other reason"
+                            disabled={pricingDisabled}
+                            className="mt-2 w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
+                          />
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-gray-400 text-xs uppercase mb-1">Unit Cost</p>
+                          <input
+                            value={responseItem?.unitCost || ""}
+                            onChange={(e) => updateLineItem(index, { unitCost: e.target.value })}
+                            placeholder="e.g. 159.85"
+                            disabled={pricingDisabled || !!responseItem?.noBidReason}
+                            className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-xs uppercase mb-1">Delivery Days</p>
+                          <input
+                            value={responseItem?.deliveryDays || ""}
+                            onChange={(e) => updateLineItem(index, { deliveryDays: e.target.value })}
+                            placeholder="e.g. 30"
+                            disabled={pricingDisabled || !!responseItem?.noBidReason}
+                            className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div>
+                          <p className="text-gray-400 text-xs uppercase mb-1">Country Of Origin</p>
+                          <select
+                            value={(responseItem?.countryOfOrigin || "USA").toUpperCase() === "USA" ? "USA" : "OTHER"}
+                            onChange={(e) => {
+                              if (e.target.value === "USA") {
+                                updateLineItem(index, { countryOfOrigin: "USA" });
+                              } else {
+                                updateLineItem(index, { countryOfOrigin: responseItem?.countryOfOrigin && responseItem.countryOfOrigin !== "USA" ? responseItem.countryOfOrigin : "" });
+                              }
+                            }}
+                            disabled={pricingDisabled}
+                            className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
+                          >
+                            <option value="USA">USA</option>
+                            <option value="OTHER">Other</option>
+                          </select>
+                          {(responseItem?.countryOfOrigin || "USA").toUpperCase() !== "USA" && (
+                            <input
+                              value={responseItem?.countryOfOrigin || ""}
+                              onChange={(e) => updateLineItem(index, { countryOfOrigin: e.target.value })}
+                              placeholder="Country name"
+                              disabled={pricingDisabled}
+                              className="mt-2 w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
+                            />
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-xs uppercase mb-1">Manufacturer</p>
+                          <input
+                            value={responseItem?.manufacturer || ""}
+                            onChange={(e) => updateLineItem(index, { manufacturer: e.target.value })}
+                            placeholder="Defaults to your company"
+                            disabled={pricingDisabled}
+                            className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div>
+                          <p className="text-gray-400 text-xs uppercase mb-1">IAW NSN?</p>
+                          <select
+                            value={responseItem?.isIawNsn ? "Y" : "N"}
+                            onChange={(e) => updateLineItem(index, { isIawNsn: e.target.value === "Y" })}
+                            disabled={pricingDisabled}
+                            className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
+                          >
+                            <option value="Y">Yes</option>
+                            <option value="N">No</option>
+                          </select>
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-xs uppercase mb-1">Exception Note</p>
+                          <input
+                            value={responseItem?.exceptionNote || ""}
+                            onChange={(e) => updateLineItem(index, { exceptionNote: e.target.value })}
+                            placeholder="Optional"
+                            disabled={pricingDisabled}
+                            className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div>
+                          <p className="text-gray-400 text-xs uppercase mb-1">Minimum Qty Run</p>
+                          <input
+                            value={responseItem?.minimumQty || ""}
+                            onChange={(e) => updateLineItem(index, { minimumQty: e.target.value })}
+                            placeholder="Optional"
+                            disabled={pricingDisabled}
+                            className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-xs uppercase mb-1">Qty Unit Pack</p>
+                          <input
+                            value={responseItem?.qtyUnitPack || ""}
+                            onChange={(e) => updateLineItem(index, { qtyUnitPack: e.target.value })}
+                            placeholder="Optional"
+                            disabled={pricingDisabled}
+                            className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-gray-400 text-xs uppercase">Price Breaks (up to 4)</p>
+                          <button
+                            type="button"
+                            onClick={() => addPriceBreak(index)}
+                            disabled={pricingDisabled || (responseItem?.priceBreaks?.length || 0) >= 4}
+                            className="text-xs px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            Add
+                          </button>
+                        </div>
+
+                        {(responseItem?.priceBreaks || []).length === 0 ? (
+                          <p className="text-xs text-gray-500">No price breaks</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {(responseItem?.priceBreaks || []).map((pb, pbIdx) => (
+                              <div key={pbIdx} className="grid grid-cols-5 gap-2 items-center">
+                                <input
+                                  type="number"
+                                  value={pb.fromQty}
+                                  onChange={(e) => updatePriceBreak(index, pbIdx, { fromQty: Number(e.target.value) })}
+                                  placeholder="From"
+                                  disabled={pricingDisabled}
+                                  className="h-9 px-2 rounded border border-gray-200 bg-white text-sm disabled:bg-gray-100"
+                                />
+                                <input
+                                  type="number"
+                                  value={pb.toQty}
+                                  onChange={(e) => updatePriceBreak(index, pbIdx, { toQty: Number(e.target.value) })}
+                                  placeholder="To"
+                                  disabled={pricingDisabled}
+                                  className="h-9 px-2 rounded border border-gray-200 bg-white text-sm disabled:bg-gray-100"
+                                />
+                                <input
+                                  value={pb.unitCost}
+                                  onChange={(e) => updatePriceBreak(index, pbIdx, { unitCost: e.target.value })}
+                                  placeholder="Unit Cost"
+                                  disabled={pricingDisabled}
+                                  className="h-9 px-2 rounded border border-gray-200 bg-white text-sm disabled:bg-gray-100"
+                                />
+                                <input
+                                  value={pb.deliveryDays}
+                                  onChange={(e) => updatePriceBreak(index, pbIdx, { deliveryDays: e.target.value })}
+                                  placeholder="Del Days"
+                                  disabled={pricingDisabled}
+                                  className="h-9 px-2 rounded border border-gray-200 bg-white text-sm disabled:bg-gray-100"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removePriceBreak(index, pbIdx)}
+                                  disabled={pricingDisabled}
+                                  className="h-9 px-2 rounded border border-gray-200 bg-white hover:bg-gray-50 text-sm disabled:opacity-50"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                ))}
+                  );
+                })}
 
                 {items.length === 0 && (
                   <p className="text-gray-400 text-center py-4">No line items extracted</p>
@@ -660,23 +1123,163 @@ export default function RFQFillPage() {
               </div>
             )}
 
+            {/* Submission Checklist */}
+            <div className={`rounded-2xl border p-6 ${isReadyToGenerate ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
+              <div className="flex items-center gap-2 mb-3">
+                {isReadyToGenerate ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                ) : (
+                  <AlertTriangle className="h-5 w-5 text-amber-600" />
+                )}
+                <h2 className={`font-semibold ${isReadyToGenerate ? "text-green-900" : "text-amber-900"}`}>
+                  Submission Checklist
+                </h2>
+              </div>
+
+              {isReadyToGenerate ? (
+                <p className="text-sm text-green-700">
+                  All required fields are complete. You can generate the quote PDFs.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-amber-700 mb-2">
+                    Please complete the following before generating:
+                  </p>
+                  <ul className="space-y-1">
+                    {validationErrors.map((error, idx) => (
+                      <li key={idx} className="flex items-center gap-2 text-sm text-amber-800">
+                        <XCircle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                        {error}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* Vendor Quote Section */}
+            <div className="bg-white rounded-2xl border p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <FileBadge className="h-5 w-5 text-blue-500" />
+                <h2 className="font-semibold text-gray-900">Vendor Quote</h2>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <p className="text-gray-500 text-xs uppercase mb-2">Vendor Quote Reference</p>
+                  <input
+                    value={vendorQuoteRef}
+                    onChange={(e) => setVendorQuoteRef(e.target.value)}
+                    placeholder="e.g., ACQ-RFQ-12345-1"
+                    className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm font-mono"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Auto-generated. Edit if needed. This appears on the branded quote and PO.
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-gray-500 text-xs uppercase mb-2">Quote Valid Until</p>
+                  <input
+                    type="date"
+                    value={quoteValidUntil}
+                    onChange={(e) => setQuoteValidUntil(e.target.value)}
+                    className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm"
+                  />
+                </div>
+
+                <div>
+                  <p className="text-gray-500 text-xs uppercase mb-2">Notes / Exceptions (optional)</p>
+                  <textarea
+                    value={quoteNotes}
+                    onChange={(e) => setQuoteNotes(e.target.value)}
+                    placeholder="Keep brief. Do not contradict RFQ terms."
+                    rows={2}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm resize-none"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Actions */}
             <div className="bg-white rounded-2xl border p-6">
               <h2 className="font-semibold text-gray-900 mb-4">Actions</h2>
 
               <div className="space-y-3">
+                <div className="bg-gray-50 rounded-xl p-4 border">
+                  <p className="text-gray-500 text-xs uppercase mb-2">Response</p>
+                  <select
+                    value={profileData.noBidReason}
+                    onChange={(e) =>
+                      setProfileData((prev) => ({
+                        ...prev,
+                        noBidReason: e.target.value as typeof prev.noBidReason,
+                        noBidOtherText: e.target.value === "other" ? prev.noBidOtherText : "",
+                      }))
+                    }
+                    className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm"
+                  >
+                    <option value="">Bid (Fill pricing below)</option>
+                    <option value="not_accepting">No Bid: Not accepting orders</option>
+                    <option value="geographic">No Bid: Geographic limitation</option>
+                    <option value="debarred">No Bid: Debarred / unable to comply</option>
+                    <option value="other">No Bid: Other</option>
+                  </select>
+                  {profileData.noBidReason === "other" && (
+                    <input
+                      value={profileData.noBidOtherText}
+                      onChange={(e) => setProfileData((prev) => ({ ...prev, noBidOtherText: e.target.value }))}
+                      placeholder="Other reason"
+                      className="mt-2 w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm"
+                    />
+                  )}
+                </div>
+
                 <button
-                  onClick={handleGenerate}
-                  disabled={generating || !profileLoaded}
-                  className="w-full flex items-center justify-center gap-3 h-12 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition-all disabled:opacity-50"
+                  onClick={handleSaveDraft}
+                  disabled={savingDraft || !profileLoaded}
+                  className="w-full flex items-center justify-center gap-3 h-11 rounded-xl border border-gray-200 bg-white text-gray-700 font-medium hover:bg-gray-50 transition-all disabled:opacity-50"
                 >
-                  {generating ? (
+                  {savingDraft ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
                   ) : (
-                    <Zap className="h-5 w-5" />
+                    <CheckCircle2 className="h-5 w-5" />
                   )}
-                  {generating ? "Generating..." : "Download Pre-Filled PDF"}
+                  {savingDraft ? "Saving..." : "Save Draft"}
                 </button>
+
+                {/* Two separate download buttons */}
+                <div className="grid grid-cols-1 gap-3">
+                  <button
+                    onClick={handleGenerate}
+                    disabled={generating || !profileLoaded || (!isReadyToGenerate && !profileData.noBidReason)}
+                    className="w-full flex items-center justify-center gap-3 h-12 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {generating ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <FileDown className="h-5 w-5" />
+                    )}
+                    {generating
+                      ? "Generating..."
+                      : profileData.noBidReason
+                        ? "Download Buyer Form (No-Bid)"
+                        : "Download Buyer Form PDF"}
+                  </button>
+
+                  <button
+                    onClick={handleGenerateBranded}
+                    disabled={generatingBranded || !profileLoaded || !isReadyToGenerate}
+                    className="w-full flex items-center justify-center gap-3 h-12 rounded-xl bg-green-600 text-white font-medium hover:bg-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {generatingBranded ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <FileBadge className="h-5 w-5" />
+                    )}
+                    {generatingBranded ? "Generating..." : "Download Branded Quote PDF"}
+                  </button>
+                </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   {rfqData.s3Url && (
@@ -713,7 +1316,7 @@ export default function RFQFillPage() {
               </div>
 
               <p className="text-xs text-gray-400 mt-4 text-center">
-                Download pre-filled PDF → Add pricing in Adobe → Upload completed response
+                Fill pricing above → Download PDFs. Branded quote includes your company letterhead.
               </p>
             </div>
 

@@ -1,6 +1,6 @@
 // utils/overlayPDFText.ts
 
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFCheckBox, PDFDocument, PDFRadioGroup, PDFTextField, StandardFonts, rgb } from "pdf-lib";
 import { FormData, PriceBreak } from "../types/form";
 
 type FieldType = "text" | "checkbox" | "radio" | "radioGroup";
@@ -621,6 +621,101 @@ export async function generatePDFWithOverlay(
   console.log("Starting PDF generation");
 
   const pdfDoc = await PDFDocument.load(templatePdfBytes);
+  try {
+    const form = pdfDoc.getForm();
+    const fields = form.getFields();
+
+    // If this PDF has AcroForm fields, prefer filling by field name.
+    if (fields.length > 0) {
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+      const fieldByName = new Map(fields.map((f) => [f.getName(), f]));
+      const setText = (name: string, value: string) => {
+        const field = fieldByName.get(name);
+        if (field instanceof PDFTextField) field.setText(value);
+      };
+      const setCheckbox = (name: string, checked: boolean) => {
+        const field = fieldByName.get(name);
+        if (field instanceof PDFCheckBox) {
+          if (checked) field.check();
+          else field.uncheck();
+        }
+      };
+      const selectRadio = (name: string, desired: string) => {
+        const field = fieldByName.get(name);
+        if (!(field instanceof PDFRadioGroup)) return;
+        const options = field.getOptions();
+        if (options.includes(desired)) {
+          field.select(desired);
+          return;
+        }
+
+        const upper = desired.toUpperCase();
+        const pick =
+          name === "paymentTerms"
+            ? upper.includes("45")
+              ? options.find((o) => /45/i.test(o)) ?? options[0]
+              : options.find((o) => /other/i.test(o)) ?? options[1] ?? options[0]
+            : name === "fob"
+              ? upper.includes("DEST")
+                ? options.find((o) => /dest/i.test(o)) ?? options[1] ?? options[0]
+                : options.find((o) => /orig/i.test(o)) ?? options[0]
+              : name === "SAM"
+                ? upper === "NO"
+                  ? options.find((o) => /^no$/i.test(o)) ?? options[1] ?? options[0]
+                  : options.find((o) => /^yes$/i.test(o)) ?? options[0]
+                : name === "BT"
+                  ? upper.includes("SMALL")
+                    ? options.find((o) => /small/i.test(o)) ?? options[1] ?? options[0]
+                    : options.find((o) => /large/i.test(o)) ?? options[0]
+                  : name === "madeIn-1"
+                    ? upper === "USA" || upper === "US"
+                      ? options.find((o) => /usa/i.test(o)) ?? options[0]
+                      : options.find((o) => /other/i.test(o)) ?? options[1] ?? options[0]
+                    : null;
+
+        if (pick) field.select(pick);
+      };
+
+      for (const [key, raw] of Object.entries(formData)) {
+        if (key === "priceBreaks") continue;
+        if (raw == null || raw === "") continue;
+
+        const value = String(raw);
+        const field = fieldByName.get(key);
+        if (!field) continue;
+
+        if (value === "On" || value === "Off") {
+          setCheckbox(key, value === "On");
+          continue;
+        }
+
+        if (field instanceof PDFRadioGroup) {
+          selectRadio(key, value);
+          continue;
+        }
+
+        if (field instanceof PDFTextField) {
+          setText(key, value);
+          continue;
+        }
+      }
+
+      // Best-effort mapping for country-of-origin "Other" text field.
+      if (formData["madeIn-1"] && typeof formData["madeIn-1"] === "string") {
+        const origin = formData["madeIn-1"].trim();
+        if (origin && origin.toUpperCase() !== "USA" && origin.toUpperCase() !== "US") {
+          setText("madeInOther-1", origin);
+        }
+      }
+
+      form.updateFieldAppearances(font);
+      return pdfDoc.save();
+    }
+  } catch (error) {
+    console.warn("AcroForm fill not available; falling back to overlay:", error);
+  }
+
   const pages = pdfDoc.getPages();
   console.log(`PDF loaded, has ${pages.length} pages`);
 

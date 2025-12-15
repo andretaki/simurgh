@@ -5,6 +5,7 @@ import { rfqDocuments } from "@/drizzle/migrations/schema";
 import { downloadFromS3 } from "@/lib/aws/s3";
 import pdfParse from "pdf-parse";
 import OpenAI from "openai";
+import { normalizeRfqNumber } from "@/lib/rfq-number";
 
 // Force dynamic rendering to prevent static generation errors
 export const dynamic = 'force-dynamic';
@@ -114,11 +115,12 @@ export async function GET(request: NextRequest) {
           }
 
           // Update database with extracted data
+          const normalizedRfqNumber = normalizeRfqNumber(extractedFields.rfqNumber);
           await db.update(rfqDocuments)
             .set({
               extractedText: extractedText.substring(0, 10000),
               extractedFields,
-              rfqNumber: extractedFields.rfqNumber || null,
+              rfqNumber: normalizedRfqNumber,
               dueDate: extractedFields.dueDate ? new Date(extractedFields.dueDate) : null,
               contractingOffice: extractedFields.contractingOffice || null,
               status: "processed",
@@ -135,7 +137,7 @@ export async function GET(request: NextRequest) {
 
           // Send email notification for successfully processed RFQ
           await sendRFQNotification({
-            rfqNumber: extractedFields.rfqNumber,
+            rfqNumber: normalizedRfqNumber,
             title: extractedFields.title,
             dueDate: extractedFields.dueDate ? new Date(extractedFields.dueDate) : null,
             contractingOffice: extractedFields.contractingOffice,

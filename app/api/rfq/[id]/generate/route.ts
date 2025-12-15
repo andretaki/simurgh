@@ -4,6 +4,7 @@ import { rfqDocuments, rfqResponses, companyProfiles } from "@/drizzle/migration
 import { eq } from "drizzle-orm";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { uploadToS3, downloadFromS3 } from "@/lib/aws/s3";
+import { fillAsrcAcroFormIfPresent } from "@/lib/pdf/asrc-acroform";
 
 // Coordinate mappings for ASRC Federal RFQ form
 // Based on actual PDF field positions from filled example
@@ -92,6 +93,7 @@ const PAGE_3_FIELDS = {
 
 interface ResponseData {
   pricesFirmUntil?: string;
+  quoteRefNum?: string;
   paymentTerms?: string;
   paymentTermsOther?: string;
   shippingCost?: "noFreight" | "ppa";
@@ -122,6 +124,8 @@ interface ResponseData {
     minimumQty: string;
     qtyUnitPack: string;
     exceptionNote: string;
+    noBidReason?: "" | "not_our_product" | "distributor_only" | "obsolete" | "out_of_stock" | "other";
+    noBidOtherText?: string;
     priceBreaks: Array<{
       fromQty: number;
       toQty: number;
@@ -131,6 +135,8 @@ interface ResponseData {
   }>;
   authorizedSignature?: string;
   signatureDate?: string;
+  noBidReason?: "" | "not_accepting" | "geographic" | "debarred" | "other";
+  noBidOtherText?: string;
 }
 
 export async function POST(
@@ -198,6 +204,66 @@ export async function POST(
       }
     };
 
+    // Prefer AcroForm filling by field name if present (more robust than coordinate mapping).
+    const { filled: usedAcroForm } = await fillAsrcAcroFormIfPresent(pdfDoc, responseData);
+    console.log(`PDF fill mode: ${usedAcroForm ? "acroform" : "overlay"}`);
+
+    if (usedAcroForm) {
+      // Some templates may not expose signature/price-break fields as AcroForm fields.
+      // Overlay these by coordinates as a fallback.
+      let form: any = null;
+      const hasField = (name: string) => {
+        try {
+          return !!form?.getField(name);
+        } catch {
+          return false;
+        }
+      };
+      try {
+        form = pdfDoc.getForm();
+      } catch {
+        form = null;
+      }
+
+      if (pages.length >= 2) {
+        if (responseData.authorizedSignature) {
+          const hasSigField = hasField("authorizedSignature") || hasField("AuthorizedSignature") || hasField("signature");
+          if (!hasSigField) {
+            drawText(1, responseData.authorizedSignature, PAGE_2_FIELDS.authorizedSignature.x, PAGE_2_FIELDS.authorizedSignature.y, PAGE_2_FIELDS.authorizedSignature.size);
+          }
+        }
+        if (responseData.signatureDate) {
+          const hasDateField = hasField("signatureDate") || hasField("SignatureDate") || hasField("date");
+          if (!hasDateField) {
+            const date = new Date(responseData.signatureDate);
+            const formatted = `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear().toString().slice(-2)}`;
+            drawText(1, formatted, PAGE_2_FIELDS.signatureDate.x, PAGE_2_FIELDS.signatureDate.y, PAGE_2_FIELDS.signatureDate.size);
+          }
+        }
+      }
+
+      if (pages.length >= 3 && responseData.lineItems && responseData.lineItems.length > 0) {
+        const item = responseData.lineItems[0];
+        const tableRows = [
+          PAGE_3_FIELDS.priceBreakTable.row1,
+          PAGE_3_FIELDS.priceBreakTable.row2,
+          PAGE_3_FIELDS.priceBreakTable.row3,
+          PAGE_3_FIELDS.priceBreakTable.row4,
+        ];
+
+        item.priceBreaks.forEach((pb, idx) => {
+          if (idx < tableRows.length) {
+            const row = tableRows[idx];
+            drawText(2, String(pb.fromQty), row.fromQty, row.y, 10);
+            drawText(2, String(pb.toQty), row.toQty, row.y, 10);
+            drawText(2, pb.unitCost, row.unitCost, row.y, 10);
+            if (pb.deliveryDays) {
+              drawText(2, pb.deliveryDays, row.delDays, row.y, 10);
+            }
+          }
+        });
+      }
+    } else {
     // ========== PAGE 1: Quote Header & Business Info ==========
     if (pages.length >= 1) {
       // Price Firm Until date
@@ -205,6 +271,11 @@ export async function POST(
         const date = new Date(responseData.pricesFirmUntil);
         const formatted = `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear().toString().slice(-2)}`;
         drawText(0, formatted, PAGE_1_FIELDS.pricesFirmUntil.x, PAGE_1_FIELDS.pricesFirmUntil.y, PAGE_1_FIELDS.pricesFirmUntil.size);
+      }
+
+      // Quote reference number
+      if (responseData.quoteRefNum) {
+        drawText(0, responseData.quoteRefNum, PAGE_1_FIELDS.quoteRefNum.x, PAGE_1_FIELDS.quoteRefNum.y, PAGE_1_FIELDS.quoteRefNum.size);
       }
 
       // Payment Terms
@@ -288,45 +359,28 @@ export async function POST(
         const formatted = `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear().toString().slice(-2)}`;
         drawText(1, formatted, PAGE_2_FIELDS.signatureDate.x, PAGE_2_FIELDS.signatureDate.y, PAGE_2_FIELDS.signatureDate.size);
       }
+
+      // No-bid reasons
+      if (responseData.noBidReason) {
+        if (responseData.noBidReason === "not_accepting") {
+          drawX(1, PAGE_2_FIELDS.noBidNotAccepting.x, PAGE_2_FIELDS.noBidNotAccepting.y);
+        } else if (responseData.noBidReason === "geographic") {
+          drawX(1, PAGE_2_FIELDS.noBidGeographic.x, PAGE_2_FIELDS.noBidGeographic.y);
+        } else if (responseData.noBidReason === "debarred") {
+          drawX(1, PAGE_2_FIELDS.noBidDebarred.x, PAGE_2_FIELDS.noBidDebarred.y);
+        } else if (responseData.noBidReason === "other") {
+          drawX(1, PAGE_2_FIELDS.noBidOther.x, PAGE_2_FIELDS.noBidOther.y);
+          if (responseData.noBidOtherText) {
+            drawText(1, responseData.noBidOtherText, PAGE_2_FIELDS.noBidOtherText.x, PAGE_2_FIELDS.noBidOtherText.y, PAGE_2_FIELDS.noBidOtherText.size);
+          }
+        }
+      }
     }
 
-    // ========== PAGE 3: Line Items & Pricing ==========
-    if (pages.length >= 3 && responseData.lineItems && responseData.lineItems.length > 0) {
-      const item = responseData.lineItems[0]; // First item for now
-
-      // Delivery Days
-      if (item.deliveryDays) {
-        drawText(2, `${item.deliveryDays} DAYS`, PAGE_3_FIELDS.deliveryDays.x, PAGE_3_FIELDS.deliveryDays.y, PAGE_3_FIELDS.deliveryDays.size);
-      }
-
-      // Country of Origin
-      if (item.countryOfOrigin === "USA") {
-        drawX(2, PAGE_3_FIELDS.countryOfOriginUSA.x, PAGE_3_FIELDS.countryOfOriginUSA.y);
-      } else if (item.countryOfOrigin) {
-        drawX(2, PAGE_3_FIELDS.countryOfOriginOther.x, PAGE_3_FIELDS.countryOfOriginOther.y);
-        drawText(2, item.countryOfOrigin, PAGE_3_FIELDS.countryOfOriginOtherText.x, PAGE_3_FIELDS.countryOfOriginOtherText.y, PAGE_3_FIELDS.countryOfOriginOtherText.size);
-      }
-
-      // Exception Note (includes manufacturer)
-      const exceptionText = item.manufacturer
-        ? `MFR: ${item.manufacturer}`
-        : item.exceptionNote || "";
-      if (exceptionText) {
-        drawText(2, exceptionText, PAGE_3_FIELDS.exceptionNote.x, PAGE_3_FIELDS.exceptionNote.y, PAGE_3_FIELDS.exceptionNote.size);
-      }
-
-      // Polchem questions
-      if (item.isIawNsn !== undefined) {
-        drawText(2, item.isIawNsn ? "Y" : "N", PAGE_3_FIELDS.isIawNsn.x, PAGE_3_FIELDS.isIawNsn.y, PAGE_3_FIELDS.isIawNsn.size);
-      }
-      if (item.minimumQty) {
-        drawText(2, item.minimumQty, PAGE_3_FIELDS.minimumQtyRun.x, PAGE_3_FIELDS.minimumQtyRun.y, PAGE_3_FIELDS.minimumQtyRun.size);
-      }
-      if (item.qtyUnitPack) {
-        drawText(2, item.qtyUnitPack, PAGE_3_FIELDS.qtyUnitPack.x, PAGE_3_FIELDS.qtyUnitPack.y, PAGE_3_FIELDS.qtyUnitPack.size);
-      }
-
-      // Price Breaks Table
+    // ========== PAGE 3+: Line Items & Pricing (one page per item) ==========
+    // ASRC forms typically have one page per line item, starting at page 3 (index 2)
+    // This loop handles multiple line items by writing each to its corresponding page
+    if (responseData.lineItems && responseData.lineItems.length > 0) {
       const tableRows = [
         PAGE_3_FIELDS.priceBreakTable.row1,
         PAGE_3_FIELDS.priceBreakTable.row2,
@@ -334,17 +388,76 @@ export async function POST(
         PAGE_3_FIELDS.priceBreakTable.row4,
       ];
 
-      item.priceBreaks.forEach((pb, idx) => {
-        if (idx < tableRows.length) {
-          const row = tableRows[idx];
-          drawText(2, String(pb.fromQty), row.fromQty, row.y, 10);
-          drawText(2, String(pb.toQty), row.toQty, row.y, 10);
-          drawText(2, pb.unitCost, row.unitCost, row.y, 10);
-          if (pb.deliveryDays) {
-            drawText(2, pb.deliveryDays, row.delDays, row.y, 10);
-          }
+      responseData.lineItems.forEach((item, itemIndex) => {
+        // Each line item goes on page 3+itemIndex (page index = 2 + itemIndex)
+        const pageIndex = 2 + itemIndex;
+
+        // Skip if page doesn't exist or item is no-bid
+        if (pageIndex >= pages.length) {
+          console.log(`Skipping line item ${itemIndex + 1}: page ${pageIndex + 1} does not exist`);
+          return;
+        }
+
+        // Skip no-bid items
+        if (item.noBidReason) {
+          console.log(`Skipping line item ${itemIndex + 1}: no-bid reason set`);
+          return;
+        }
+
+        // Unit Cost
+        if (item.unitCost) {
+          drawText(pageIndex, String(item.unitCost), PAGE_3_FIELDS.unitCost.x, PAGE_3_FIELDS.unitCost.y, PAGE_3_FIELDS.unitCost.size);
+        }
+
+        // Delivery Days
+        if (item.deliveryDays) {
+          drawText(pageIndex, `${item.deliveryDays} DAYS`, PAGE_3_FIELDS.deliveryDays.x, PAGE_3_FIELDS.deliveryDays.y, PAGE_3_FIELDS.deliveryDays.size);
+        }
+
+        // Country of Origin
+        if (item.countryOfOrigin === "USA") {
+          drawX(pageIndex, PAGE_3_FIELDS.countryOfOriginUSA.x, PAGE_3_FIELDS.countryOfOriginUSA.y);
+        } else if (item.countryOfOrigin) {
+          drawX(pageIndex, PAGE_3_FIELDS.countryOfOriginOther.x, PAGE_3_FIELDS.countryOfOriginOther.y);
+          drawText(pageIndex, item.countryOfOrigin, PAGE_3_FIELDS.countryOfOriginOtherText.x, PAGE_3_FIELDS.countryOfOriginOtherText.y, PAGE_3_FIELDS.countryOfOriginOtherText.size);
+        }
+
+        // Exception Note (includes manufacturer)
+        const exceptionParts = [];
+        if (item.manufacturer) exceptionParts.push(`MFR: ${item.manufacturer}`);
+        if (item.exceptionNote) exceptionParts.push(`NOTE: ${item.exceptionNote}`);
+        const exceptionText = exceptionParts.join(" ");
+        if (exceptionText) {
+          drawText(pageIndex, exceptionText, PAGE_3_FIELDS.exceptionNote.x, PAGE_3_FIELDS.exceptionNote.y, PAGE_3_FIELDS.exceptionNote.size);
+        }
+
+        // Polchem questions
+        if (item.isIawNsn !== undefined) {
+          drawText(pageIndex, item.isIawNsn ? "Y" : "N", PAGE_3_FIELDS.isIawNsn.x, PAGE_3_FIELDS.isIawNsn.y, PAGE_3_FIELDS.isIawNsn.size);
+        }
+        if (item.minimumQty) {
+          drawText(pageIndex, item.minimumQty, PAGE_3_FIELDS.minimumQtyRun.x, PAGE_3_FIELDS.minimumQtyRun.y, PAGE_3_FIELDS.minimumQtyRun.size);
+        }
+        if (item.qtyUnitPack) {
+          drawText(pageIndex, item.qtyUnitPack, PAGE_3_FIELDS.qtyUnitPack.x, PAGE_3_FIELDS.qtyUnitPack.y, PAGE_3_FIELDS.qtyUnitPack.size);
+        }
+
+        // Price Breaks Table
+        if (item.priceBreaks) {
+          item.priceBreaks.forEach((pb, idx) => {
+            if (idx < tableRows.length) {
+              const row = tableRows[idx];
+              drawText(pageIndex, String(pb.fromQty), row.fromQty, row.y, 10);
+              drawText(pageIndex, String(pb.toQty), row.toQty, row.y, 10);
+              drawText(pageIndex, pb.unitCost, row.unitCost, row.y, 10);
+              if (pb.deliveryDays) {
+                drawText(pageIndex, pb.deliveryDays, row.delDays, row.y, 10);
+              }
+            }
+          });
         }
       });
+    }
     }
 
     // Serialize the filled PDF
@@ -356,16 +469,42 @@ export async function POST(
     const s3Key = `responses/${rfqId}-${timestamp}-filled.pdf`;
     const { url } = await uploadToS3(s3Key, pdfBuffer, 'application/pdf');
 
-    // Save response record
-    const [savedResponse] = await db.insert(rfqResponses).values({
-      rfqDocumentId: rfqId,
-      companyProfileId: profile?.id || null,
-      responseData,
-      generatedPdfS3Key: s3Key,
-      generatedPdfUrl: url,
-      status: 'completed',
-      submittedAt: new Date(),
-    }).returning();
+    // Save response record (upsert to avoid duplicates)
+    const [existing] = await db
+      .select()
+      .from(rfqResponses)
+      .where(eq(rfqResponses.rfqDocumentId, rfqId))
+      .limit(1);
+
+    let savedResponse;
+    if (existing) {
+      [savedResponse] = await db
+        .update(rfqResponses)
+        .set({
+          companyProfileId: profile?.id || null,
+          responseData,
+          generatedPdfS3Key: s3Key,
+          generatedPdfUrl: url,
+          status: "completed",
+          submittedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(rfqResponses.id, existing.id))
+        .returning();
+    } else {
+      [savedResponse] = await db
+        .insert(rfqResponses)
+        .values({
+          rfqDocumentId: rfqId,
+          companyProfileId: profile?.id || null,
+          responseData,
+          generatedPdfS3Key: s3Key,
+          generatedPdfUrl: url,
+          status: "completed",
+          submittedAt: null,
+        })
+        .returning();
+    }
 
     console.log(`PDF generated and saved. Response ID: ${savedResponse.id}`);
 

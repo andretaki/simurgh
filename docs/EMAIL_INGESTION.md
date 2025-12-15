@@ -3,6 +3,11 @@
 ## Overview
 The system automatically ingests RFQ documents from emails sent by **noreply@asrcfederal.com** to **alliance@alliancechemical.com**.
 
+See also:
+
+- `docs/deep-dive/05-workflows.md` for the end-to-end RFQ → response flow
+- `docs/deep-dive/04-api.md` for the API route map
+
 ## Architecture
 
 ### Components:
@@ -196,5 +201,5 @@ curl https://yourdomain.com/api/email/poll
 1. Emails are marked as read after processing
 2. Only processes PDFs (ignores other attachments)
 3. Stores first 10,000 chars of extracted text
-4. Presigned S3 URLs expire after 7 days
+4. Presigned S3 download URLs are typically generated on-demand (see `GET /api/rfq/:id`) and currently expire after 24 hours; some stored URLs (e.g. from `uploadToS3`) may be 7 days
 5. Webhook subscriptions expire after 3 days (auto-renewable)

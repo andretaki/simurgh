@@ -211,3 +211,6 @@ export interface CompanyProfile {
   createdAt?: string;
   updatedAt?: string;
 }
+
+// Re-export workflow types
+export type { WorkflowStatus, WorkflowRecord } from "../workflow-service";

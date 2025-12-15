@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { governmentOrders } from "@/drizzle/migrations/schema";
+import { governmentOrders, governmentOrderRfqLinks, rfqDocuments } from "@/drizzle/migrations/schema";
+import { eq } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
+import { normalizeRfqNumber } from "@/lib/rfq-number";
 
 // POST /api/orders/upload - Upload PO PDF and extract data
 export async function POST(request: Request) {
@@ -21,38 +23,73 @@ export async function POST(request: Request) {
     // Use Claude to extract PO data
     const extractedData = await extractPODataWithClaude(base64);
 
-    // Create order in database
-    const [newOrder] = await db
-      .insert(governmentOrders)
-      .values({
-        poNumber: extractedData.poNumber || "UNKNOWN",
-        productName: extractedData.productName || "Unknown Product",
-        productDescription: extractedData.productDescription || null,
-        grade: extractedData.grade || null,
-        nsn: extractedData.nsn || null,
-        nsnBarcode: extractedData.nsn
-          ? extractedData.nsn.replace(/-/g, "")
-          : null,
-        quantity: extractedData.quantity || 1,
-        unitOfMeasure: extractedData.unitOfMeasure || null,
-        unitContents: extractedData.unitContents || null,
-        unitPrice: extractedData.unitPrice || null,
-        totalPrice: extractedData.totalPrice || null,
-        spec: extractedData.spec || null,
-        milStd: extractedData.milStd || null,
-        shipToName: extractedData.shipToName || null,
-        shipToAddress: extractedData.shipToAddress || null,
-        deliveryDate: extractedData.deliveryDate
-          ? new Date(extractedData.deliveryDate)
-          : null,
-        extractedData: extractedData,
-        status: "pending",
-      })
-      .returning();
+    const result = await db.transaction(async (tx) => {
+      // Try to find and link to originating RFQ by RFQ number
+      let linkedRfqDocumentId: number | null = null;
+      const rfqNumber = normalizeRfqNumber(extractedData.rfqNumber);
+
+      if (rfqNumber) {
+        const [matchingRfq] = await tx
+          .select()
+          .from(rfqDocuments)
+          .where(eq(rfqDocuments.rfqNumber, rfqNumber))
+          .limit(1);
+
+        if (matchingRfq) {
+          linkedRfqDocumentId = matchingRfq.id;
+          console.log(
+            `Auto-linked PO to RFQ: ${rfqNumber} (rfqDocumentId: ${matchingRfq.id})`
+          );
+        } else {
+          console.log(
+            `RFQ number ${rfqNumber} found in PO but no matching RFQ document exists`
+          );
+        }
+      }
+
+      // Create order in database (legacy rfqDocumentId kept for now)
+      const [newOrder] = await tx
+        .insert(governmentOrders)
+        .values({
+          poNumber: extractedData.poNumber || "UNKNOWN",
+          rfqNumber: rfqNumber,
+          rfqDocumentId: linkedRfqDocumentId,
+          productName: extractedData.productName || "Unknown Product",
+          productDescription: extractedData.productDescription || null,
+          grade: extractedData.grade || null,
+          nsn: extractedData.nsn || null,
+          nsnBarcode: extractedData.nsn ? extractedData.nsn.replace(/-/g, "") : null,
+          quantity: extractedData.quantity || 1,
+          unitOfMeasure: extractedData.unitOfMeasure || null,
+          unitContents: extractedData.unitContents || null,
+          unitPrice: extractedData.unitPrice || null,
+          totalPrice: extractedData.totalPrice || null,
+          spec: extractedData.spec || null,
+          milStd: extractedData.milStd || null,
+          shipToName: extractedData.shipToName || null,
+          shipToAddress: extractedData.shipToAddress || null,
+          deliveryDate: extractedData.deliveryDate ? new Date(extractedData.deliveryDate) : null,
+          extractedData: extractedData,
+          status: "pending",
+        })
+        .returning();
+
+      // Store the relationship in the junction table (future-proof: many-to-many)
+      if (linkedRfqDocumentId) {
+        await tx.insert(governmentOrderRfqLinks).values({
+          governmentOrderId: newOrder.id,
+          rfqDocumentId: linkedRfqDocumentId,
+        });
+      }
+
+      return { newOrder, rfqNumber, linkedRfqDocumentId };
+    });
 
     return NextResponse.json({
-      orderId: newOrder.id,
+      orderId: result.newOrder.id,
       extractedData,
+      linkedRfqNumber: result.rfqNumber,
+      linkedRfqDocumentId: result.linkedRfqDocumentId,
     });
   } catch (error) {
     console.error("Error processing PO upload:", error);
@@ -70,6 +107,7 @@ async function extractPODataWithClaude(base64Pdf: string) {
 
 Return a JSON object with these fields:
 - poNumber: The PO/Order number (e.g., "821-45659232")
+- rfqNumber: The RFQ/Solicitation number this PO is awarding (e.g., "821-36208263"). Government POs typically reference the original RFQ number. Look for "RFQ", "Solicitation", "Reference", or "In response to" fields.
 - productName: Main product name (e.g., "LUBRICATING OIL, UTILITY")
 - productDescription: Full product description including brand if mentioned
 - grade: Product grade if specified (e.g., "TECHNICAL", "ACS")

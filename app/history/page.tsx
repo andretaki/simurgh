@@ -205,8 +205,8 @@ export default function HistoryPage() {
             <CardContent className="text-center py-12">
               <FileText className="mx-auto h-12 w-12 text-gray-400 mb-4" />
               <p className="text-gray-600">No RFQs found</p>
-              <Link href="/rfq/upload">
-                <Button className="mt-4">Upload Your First RFQ</Button>
+              <Link href="/projects">
+                <Button className="mt-4">Create a Project</Button>
               </Link>
             </CardContent>
           </Card>

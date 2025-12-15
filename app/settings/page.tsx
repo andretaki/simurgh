@@ -167,18 +167,18 @@ export default function CompanySettingsPage() {
   }
 
   return (
-    <div className="container mx-auto py-8 px-4 max-w-4xl">
-      <div className="flex gap-4 mb-6">
-        <Button variant="outline" asChild>
-          <Link href="/rfq">Upload RFQ</Link>
-        </Button>
-        <Button variant="outline" asChild>
-          <Link href="/rfq-fill">Fill RFQ</Link>
-        </Button>
-        <Button variant="outline" asChild>
-          <Link href="/rfq-done">Completed RFQs</Link>
-        </Button>
-      </div>
+      <div className="container mx-auto py-8 px-4 max-w-4xl">
+        <div className="flex gap-4 mb-6">
+          <Button variant="outline" asChild>
+            <Link href="/projects">Projects</Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/workflow">Workflow</Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/orders">Orders</Link>
+          </Button>
+        </div>
 
       <Card className="shadow-lg">
         <CardHeader>

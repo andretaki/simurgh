@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { rfqDocuments } from "@/drizzle/migrations/schema";
 import pdfParse from "pdf-parse";
 import OpenAI from "openai";
+import { normalizeRfqNumber } from "@/lib/rfq-number";
 import { eq } from "drizzle-orm";
 import { sendRFQNotification } from "@/lib/email-notification";
 
@@ -140,6 +141,7 @@ async function processNewEmail(resourceData: any) {
         });
 
         const extractedFields = JSON.parse(completion.choices[0].message.content || "{}");
+        const normalizedRfqNumber = normalizeRfqNumber(extractedFields.rfqNumber);
 
         // Update database
         await db.update(rfqDocuments)
@@ -152,7 +154,7 @@ async function processNewEmail(resourceData: any) {
               emailSubject: message.subject,
               emailReceivedAt: message.receivedDateTime,
             },
-            rfqNumber: extractedFields.rfqNumber || null,
+            rfqNumber: normalizedRfqNumber,
             dueDate: extractedFields.dueDate ? new Date(extractedFields.dueDate) : null,
             contractingOffice: extractedFields.contractingOffice || null,
             status: "processed",
@@ -164,7 +166,7 @@ async function processNewEmail(resourceData: any) {
 
         // Send email notification for successfully processed RFQ
         await sendRFQNotification({
-          rfqNumber: extractedFields.rfqNumber,
+          rfqNumber: normalizedRfqNumber,
           title: extractedFields.title,
           dueDate: extractedFields.dueDate ? new Date(extractedFields.dueDate) : null,
           contractingOffice: extractedFields.contractingOffice,

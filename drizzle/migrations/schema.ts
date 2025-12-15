@@ -1,4 +1,4 @@
-import { serial, varchar, text, boolean, timestamp, jsonb, integer, numeric, pgSchema, index } from "drizzle-orm/pg-core";
+import { serial, varchar, text, boolean, timestamp, jsonb, integer, numeric, pgSchema, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 // Create a schema object
 export const simurghSchema = pgSchema("simurgh");
@@ -83,6 +83,13 @@ export const rfqResponses = simurghSchema.table("rfq_responses", {
   generatedPdfS3Key: varchar("generated_pdf_s3_key", { length: 500 }),
   generatedPdfUrl: text("generated_pdf_url"),
 
+  // Vendor quote fields (for branded quote PDF generation)
+  vendorQuoteRef: varchar("vendor_quote_ref", { length: 100 }), // e.g., ACQ-RFQ-FA8501-24-0014-01
+  quoteValidUntil: timestamp("quote_valid_until"),
+  generatedBrandedQuoteS3Key: varchar("generated_branded_quote_s3_key", { length: 500 }),
+  generatedBrandedQuoteUrl: text("generated_branded_quote_url"),
+  quoteNotes: text("quote_notes"), // Optional notes for the branded quote
+
   // Tracking
   submittedAt: timestamp("submitted_at"),
   status: varchar("status", { length: 50 }).default("draft"), // draft, completed, submitted
@@ -92,6 +99,7 @@ export const rfqResponses = simurghSchema.table("rfq_responses", {
 }, (table) => ({
   rfqDocumentIdIdx: index("idx_rfq_responses_rfq_document_id").on(table.rfqDocumentId),
   statusIdx: index("idx_rfq_responses_status").on(table.status),
+  vendorQuoteRefIdx: uniqueIndex("idx_rfq_responses_vendor_quote_ref").on(table.vendorQuoteRef),
 }));
 
 export const rfqHistory = simurghSchema.table("rfq_history", {
@@ -168,6 +176,10 @@ export const governmentOrders = simurghSchema.table("government_orders", {
   // PO Information (extracted from PDF)
   poNumber: varchar("po_number", { length: 50 }).notNull(),
 
+  // Link back to originating RFQ (for full workflow tracking)
+  rfqNumber: varchar("rfq_number", { length: 100 }), // RFQ number referenced in the PO
+  rfqDocumentId: integer("rfq_document_id").references(() => rfqDocuments.id), // FK to rfqDocuments
+
   // Product Information
   productName: varchar("product_name", { length: 255 }).notNull(),
   productDescription: text("product_description"),
@@ -208,6 +220,8 @@ export const governmentOrders = simurghSchema.table("government_orders", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   poNumberIdx: index("idx_government_orders_po_number").on(table.poNumber),
+  rfqNumberIdx: index("idx_government_orders_rfq_number").on(table.rfqNumber),
+  rfqDocumentIdIdx: index("idx_government_orders_rfq_document_id").on(table.rfqDocumentId),
   statusIdx: index("idx_government_orders_status").on(table.status),
   nsnIdx: index("idx_government_orders_nsn").on(table.nsn),
   createdAtIdx: index("idx_government_orders_created_at").on(table.createdAt),
@@ -293,3 +307,21 @@ export const generatedLabels = simurghSchema.table("generated_labels", {
 
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// ===============================
+// RFQ ↔ Government Order Links (many-to-many)
+// ===============================
+
+export const governmentOrderRfqLinks = simurghSchema.table("government_order_rfq_links", {
+  id: serial("id").primaryKey(),
+  governmentOrderId: integer("government_order_id").notNull().references(() => governmentOrders.id, { onDelete: "cascade" }),
+  rfqDocumentId: integer("rfq_document_id").notNull().references(() => rfqDocuments.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  governmentOrderIdIdx: index("idx_government_order_rfq_links_government_order_id").on(table.governmentOrderId),
+  rfqDocumentIdIdx: index("idx_government_order_rfq_links_rfq_document_id").on(table.rfqDocumentId),
+  uniquePairIdx: uniqueIndex("uq_government_order_rfq_links_government_order_id_rfq_document_id").on(
+    table.governmentOrderId,
+    table.rfqDocumentId
+  ),
+}));

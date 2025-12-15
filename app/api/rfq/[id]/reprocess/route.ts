@@ -6,6 +6,7 @@ import pdfParse from "pdf-parse";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { eq } from "drizzle-orm";
 import { RFQ_EXTRACTION_PROMPT } from "@/lib/rfq-extraction-prompt";
+import { normalizeRfqNumber } from "@/lib/rfq-number";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -105,8 +106,7 @@ export async function POST(
       .rfqSummary as Record<string, unknown> | undefined;
     const header = rfqSummary?.header as Record<string, unknown> | undefined;
     const buyer = rfqSummary?.buyer as Record<string, unknown> | undefined;
-    const rfqNumber =
-      (header?.rfqNumber as string) || rfqDoc.rfqNumber || null;
+    const rfqNumber = normalizeRfqNumber(header?.rfqNumber) ?? rfqDoc.rfqNumber ?? null;
     const contractingOffice =
       (buyer?.contractingOffice as string) || rfqDoc.contractingOffice || null;
 
