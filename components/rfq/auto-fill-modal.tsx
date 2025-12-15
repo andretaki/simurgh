@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useCallback } from "react"
 import {
   Dialog,
   DialogContent,
@@ -57,36 +57,31 @@ export function AutoFillModal({
   const [aiSuggestions, setAiSuggestions] = useState<any>(null)
   const [progress, setProgress] = useState(0)
 
-  useEffect(() => {
-    if (isOpen && companyProfile) {
-      analyzeMappings()
-    }
-  }, [isOpen, companyProfile])
-
-  const analyzeMappings = async () => {
+  const analyzeMappings = useCallback(async () => {
     setIsAnalyzing(true)
     setProgress(0)
-    
+
     // Simulate progressive loading
     const progressInterval = setInterval(() => {
       setProgress(prev => Math.min(prev + 10, 90))
     }, 200)
 
+    let aiSuggestionsResult: any = null
     try {
       // Get AI suggestions if RFQ summary is available
       if (rfqSummary) {
         const response = await fetch("/api/rfq/analyze-fields", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             rfqSummary,
-            companyProfile 
+            companyProfile
           }),
         })
-        
+
         if (response.ok) {
-          const suggestions = await response.json()
-          setAiSuggestions(suggestions)
+          aiSuggestionsResult = await response.json()
+          setAiSuggestions(aiSuggestionsResult)
         }
       }
 
@@ -205,15 +200,15 @@ export function AutoFillModal({
       }
 
       // AI-suggested fields
-      if (aiSuggestions?.suggestedValues) {
-        Object.entries(aiSuggestions.suggestedValues).forEach(([field, value]) => {
+      if (aiSuggestionsResult?.suggestedValues) {
+        Object.entries(aiSuggestionsResult.suggestedValues).forEach(([field, value]) => {
           if (!newMappings.some(m => m.field === field)) {
             newMappings.push({
               field,
               value,
               source: "ai",
               category: "AI Suggested",
-              confidence: aiSuggestions.confidence?.[field] || 75,
+              confidence: aiSuggestionsResult.confidence?.[field] || 75,
             })
           }
         })
@@ -249,7 +244,13 @@ export function AutoFillModal({
     } finally {
       setIsAnalyzing(false)
     }
-  }
+  }, [rfqSummary, companyProfile])
+
+  useEffect(() => {
+    if (isOpen && companyProfile) {
+      analyzeMappings()
+    }
+  }, [isOpen, companyProfile, analyzeMappings])
 
   const getCategoryIcon = (category: string) => {
     switch (category) {

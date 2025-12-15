@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -178,11 +178,7 @@ export default function WorkflowDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchData();
-  }, [filterStatus]);
-
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     setStatsLoading(true);
     try {
       const statsRes = await fetch("/api/workflow?stats=true");
@@ -194,9 +190,9 @@ export default function WorkflowDashboard() {
     } finally {
       setStatsLoading(false);
     }
-  };
+  }, []);
 
-  const fetchWorkflows = async () => {
+  const fetchWorkflows = useCallback(async () => {
     setWorkflowsLoading(true);
     try {
       const url = filterStatus
@@ -212,11 +208,15 @@ export default function WorkflowDashboard() {
     } finally {
       setWorkflowsLoading(false);
     }
-  };
+  }, [filterStatus]);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     await Promise.all([fetchStats(), fetchWorkflows()]);
-  };
+  }, [fetchStats, fetchWorkflows]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const filteredWorkflows = workflows.filter((w) => {
     const search = searchTerm.toLowerCase();

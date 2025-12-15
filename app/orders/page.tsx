@@ -65,25 +65,7 @@ export default function OrdersPage() {
     }
   }, []);
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-
-    const files = e.dataTransfer.files;
-    if (files && files[0]) {
-      await uploadFile(files[0]);
-    }
-  }, []);
-
-  const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files[0]) {
-      await uploadFile(files[0]);
-    }
-  };
-
-  const uploadFile = async (file: File) => {
+  const uploadFile = useCallback(async (file: File) => {
     if (!file.type.includes("pdf")) {
       toast({
         variant: "destructive",
@@ -127,6 +109,24 @@ export default function OrdersPage() {
       });
     } finally {
       setUploading(false);
+    }
+  }, [toast]);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files[0]) {
+      await uploadFile(files[0]);
+    }
+  }, [uploadFile]);
+
+  const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files[0]) {
+      await uploadFile(files[0]);
     }
   };
 

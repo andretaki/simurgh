@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -127,11 +127,7 @@ export default function RFQFillPage() {
     }>,
   });
 
-  useEffect(() => {
-    fetchData();
-  }, [rfqId]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       let rfq: RFQData | null = null;
       const rfqResponse = await fetch(`/api/rfq/${rfqId}`);
@@ -178,7 +174,12 @@ export default function RFQFillPage() {
       console.error("Error:", error);
       setLoading(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rfqId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const applyProfile = (profile: CompanyProfile, rfq: RFQData | null) => {
     const firmUntil = new Date();
