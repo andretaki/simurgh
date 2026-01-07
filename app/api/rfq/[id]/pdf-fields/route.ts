@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { rfqDocuments } from "@/drizzle/migrations/schema";
 import { eq } from "drizzle-orm";
 import { downloadFromS3 } from "@/lib/aws/s3";
-import { PDFCheckBox, PDFDocument, PDFRadioGroup, PDFTextField } from "pdf-lib";
+import { PDFCheckBox, PDFDocument, PDFDropdown, PDFOptionList, PDFRadioGroup, PDFTextField } from "pdf-lib";
 
 export const runtime = "nodejs";
 
@@ -53,6 +53,15 @@ export async function GET(
       });
     }
 
+    // Build page ref to index map for widget page resolution
+    const pages = pdfDoc.getPages();
+    const pageRefToIndex = new Map<string, number>();
+    pages.forEach((p: any, idx) => {
+      if (p.ref) {
+        pageRefToIndex.set(String(p.ref), idx);
+      }
+    });
+
     const fields = form.getFields().map((f: any) => {
       const name = f.getName();
       const base: any = { name };
@@ -60,6 +69,20 @@ export async function GET(
       else if (f instanceof PDFCheckBox) base.type = "checkbox";
       else if (f instanceof PDFRadioGroup) {
         base.type = "radio";
+        try {
+          base.options = f.getOptions();
+        } catch {
+          base.options = [];
+        }
+      } else if (f instanceof PDFDropdown) {
+        base.type = "dropdown";
+        try {
+          base.options = f.getOptions();
+        } catch {
+          base.options = [];
+        }
+      } else if (f instanceof PDFOptionList) {
+        base.type = "optionlist";
         try {
           base.options = f.getOptions();
         } catch {
@@ -75,6 +98,7 @@ export async function GET(
           base.widgets = widgets.map((w: any) => {
             const rect = w.getRectangle?.();
             const pageRef = w.P?.();
+            const pageRefStr = pageRef ? String(pageRef) : null;
             const rectObj = rect
               ? {
                   x: rect.x,
@@ -85,7 +109,7 @@ export async function GET(
               : null;
             return {
               rect: rectObj,
-              pageRef: pageRef ? String(pageRef) : null,
+              pageIndex: pageRefStr ? (pageRefToIndex.get(pageRefStr) ?? null) : null,
             };
           });
         } catch {

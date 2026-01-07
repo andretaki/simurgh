@@ -126,6 +126,13 @@ export default function OrderDetailPage({
     if (res.ok) {
       const data = await res.json();
       setQualitySheet(data.qualitySheet);
+      // Update order status to quality_sheet_created
+      await fetch(`/api/orders/${orderId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...order, status: "quality_sheet_created" }),
+      });
+      setOrder((prev) => prev ? { ...prev, status: "quality_sheet_created" } : prev);
       setCurrentStep(3);
     }
   };
@@ -162,6 +169,15 @@ export default function OrderDetailPage({
         link.href = `data:application/pdf;base64,${data.pdfBase64}`;
         link.download = `${type}-label-${order.poNumber}.pdf`;
         link.click();
+      }
+      // Update status to labels_generated if this is the first label
+      if (labels.length === 0 && order.status !== "labels_generated" && order.status !== "verified") {
+        await fetch(`/api/orders/${orderId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...order, status: "labels_generated" }),
+        });
+        setOrder((prev) => prev ? { ...prev, status: "labels_generated" } : prev);
       }
       setLabels((prev) => [...prev, { id: Date.now(), labelType: type }]);
     }
