@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowLeft, Download, Check } from "lucide-react";
+
+type OrderStatus = "pending" | "quality_sheet_created" | "labels_generated" | "verified";
 
 interface Order {
   id: number;
@@ -22,7 +24,7 @@ interface Order {
   grade: string | null;
   shipToName: string | null;
   shipToAddress: string | null;
-  status: string;
+  status: OrderStatus;
 }
 
 interface QualitySheet {
@@ -34,6 +36,10 @@ interface QualitySheet {
 interface GeneratedLabel {
   id: number;
   labelType: string;
+}
+
+interface CompanyProfile {
+  cageCode: string;
 }
 
 const HAZARD_SYMBOLS = [
@@ -68,8 +74,16 @@ export default function OrderDetailPage({
   const [order, setOrder] = useState<Order | null>(null);
   const [qualitySheet, setQualitySheet] = useState<QualitySheet | null>(null);
   const [labels, setLabels] = useState<GeneratedLabel[]>([]);
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentStep, setCurrentStep] = useState(1);
+  const [error, setError] = useState<string | null>(null);
+
+  // Ref to track labels for closure-safe status checks
+  const labelsRef = useRef<GeneratedLabel[]>([]);
+  labelsRef.current = labels;
+
+  const cageCode = companyProfile?.cageCode || "1LT50";
 
   // Form data
   const [lotNumber, setLotNumber] = useState("");
@@ -86,83 +100,118 @@ export default function OrderDetailPage({
   const [checklist, setChecklist] = useState<boolean[]>(new Array(CHECKLIST_ITEMS.length).fill(false));
   const [verifierName, setVerifierName] = useState("");
 
+  // Helper to update order status with error handling
+  const updateOrderStatus = useCallback(async (newStatus: OrderStatus): Promise<boolean> => {
+    if (!order) return false;
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...order, status: newStatus }),
+      });
+      if (!res.ok) throw new Error("Failed to update order status");
+      setOrder((prev) => prev ? { ...prev, status: newStatus } : prev);
+      return true;
+    } catch (err) {
+      setError(`Failed to update status to ${newStatus}`);
+      return false;
+    }
+  }, [order, orderId]);
+
   useEffect(() => {
-    fetch(`/api/orders/${orderId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        setOrder(data.order);
-        setQualitySheet(data.qualitySheet);
-        setLabels(data.labels || []);
-        if (data.qualitySheet) {
-          setLotNumber(data.qualitySheet.lotNumber || "");
-          if (data.labels?.length > 0) setCurrentStep(4);
-          else setCurrentStep(3);
+    const fetchData = async () => {
+      try {
+        const [orderRes, profileRes] = await Promise.all([
+          fetch(`/api/orders/${orderId}`),
+          fetch("/api/company-profile"),
+        ]);
+
+        if (orderRes.ok) {
+          const data = await orderRes.json();
+          setOrder(data.order);
+          setQualitySheet(data.qualitySheet);
+          setLabels(data.labels || []);
+          if (data.qualitySheet) {
+            setLotNumber(data.qualitySheet.lotNumber || "");
+            if (data.labels?.length > 0) setCurrentStep(4);
+            else setCurrentStep(3);
+          }
+          if (data.order) {
+            setShipTo(`${data.order.shipToName || ""}\n${data.order.shipToAddress || ""}`.trim());
+          }
         }
-        if (data.order) {
-          setShipTo(`${data.order.shipToName || ""}\n${data.order.shipToAddress || ""}`.trim());
+
+        if (profileRes.ok) {
+          const profile = await profileRes.json();
+          if (profile) setCompanyProfile(profile);
         }
-      })
-      .finally(() => setLoading(false));
+      } catch (err) {
+        setError("Failed to load order data");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
   }, [orderId]);
 
   const saveQualitySheet = async () => {
     if (!order) return;
-    const res = await fetch(`/api/orders/${orderId}/quality-sheet`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        poNumber: order.poNumber,
-        lotNumber,
-        nsn: order.nsn,
-        quantity: order.quantity,
-        productType: order.productName,
-        shipTo,
-        assemblyDate,
-        inspectionDate,
-        mhmDate,
-        cageCode: "1LT50",
-      }),
-    });
-    if (res.ok) {
+    setError(null);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/quality-sheet`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          poNumber: order.poNumber,
+          lotNumber,
+          nsn: order.nsn,
+          quantity: order.quantity,
+          productType: order.productName,
+          shipTo,
+          assemblyDate,
+          inspectionDate,
+          mhmDate,
+          cageCode,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to save quality sheet");
       const data = await res.json();
       setQualitySheet(data.qualitySheet);
-      // Update order status to quality_sheet_created
-      await fetch(`/api/orders/${orderId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...order, status: "quality_sheet_created" }),
-      });
-      setOrder((prev) => prev ? { ...prev, status: "quality_sheet_created" } : prev);
+      await updateOrderStatus("quality_sheet_created");
       setCurrentStep(3);
+    } catch (err) {
+      setError("Failed to save quality sheet");
     }
   };
 
   const generateLabel = async (type: "box" | "bottle") => {
     if (!order) return;
-    const res = await fetch(`/api/orders/${orderId}/labels`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        labelType: type,
-        labelSize: type === "box" ? "4x6" : "3x4",
-        productName: order.productName,
-        grade: order.grade,
-        spec: order.spec,
-        nsn: order.nsn,
-        nsnBarcode: order.nsnBarcode,
-        cageCode: "1LT50",
-        poNumber: order.poNumber,
-        lotNumber,
-        quantity: type === "box" ? boxQuantity : bottleQuantity,
-        weight: type === "box" ? boxWeight : bottleWeight,
-        assemblyDate,
-        inspectionDate,
-        mhmDate,
-        containerType,
-        hazardSymbols,
-      }),
-    });
-    if (res.ok) {
+    setError(null);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/labels`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          labelType: type,
+          labelSize: type === "box" ? "4x6" : "3x4",
+          productName: order.productName,
+          grade: order.grade,
+          spec: order.spec,
+          nsn: order.nsn,
+          nsnBarcode: order.nsnBarcode,
+          cageCode,
+          poNumber: order.poNumber,
+          lotNumber,
+          quantity: type === "box" ? boxQuantity : bottleQuantity,
+          weight: type === "box" ? boxWeight : bottleWeight,
+          assemblyDate,
+          inspectionDate,
+          mhmDate,
+          containerType,
+          hazardSymbols,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to generate label");
       const data = await res.json();
       if (data.pdfBase64) {
         const link = document.createElement("a");
@@ -170,45 +219,54 @@ export default function OrderDetailPage({
         link.download = `${type}-label-${order.poNumber}.pdf`;
         link.click();
       }
-      // Update status to labels_generated if this is the first label
-      if (labels.length === 0 && order.status !== "labels_generated" && order.status !== "verified") {
-        await fetch(`/api/orders/${orderId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...order, status: "labels_generated" }),
-        });
-        setOrder((prev) => prev ? { ...prev, status: "labels_generated" } : prev);
-      }
+      // Use ref for closure-safe check (avoids race condition with rapid clicks)
+      const isFirstLabel = labelsRef.current.length === 0;
+      const shouldUpdateStatus = isFirstLabel &&
+        order.status !== "labels_generated" &&
+        order.status !== "verified";
+
       setLabels((prev) => [...prev, { id: Date.now(), labelType: type }]);
+
+      if (shouldUpdateStatus) {
+        await updateOrderStatus("labels_generated");
+      }
+    } catch (err) {
+      setError(`Failed to generate ${type} label`);
     }
   };
 
   const handleVerify = async () => {
-    if (!checklist.every(Boolean) || !verifierName.trim()) return;
-    await fetch(`/api/orders/${orderId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...order, status: "verified" }),
-    });
-    await fetch(`/api/orders/${orderId}/quality-sheet`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        poNumber: order?.poNumber,
-        lotNumber,
-        nsn: order?.nsn,
-        quantity: order?.quantity,
-        productType: order?.productName,
-        shipTo,
-        assemblyDate,
-        inspectionDate,
-        mhmDate,
-        cageCode: "1LT50",
-        verifiedBy: verifierName,
-        verifiedAt: new Date().toISOString(),
-      }),
-    });
-    window.location.reload();
+    if (!order || !checklist.every(Boolean) || !verifierName.trim()) return;
+    setError(null);
+    try {
+      // Update quality sheet with verification info
+      const sheetRes = await fetch(`/api/orders/${orderId}/quality-sheet`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          poNumber: order.poNumber,
+          lotNumber,
+          nsn: order.nsn,
+          quantity: order.quantity,
+          productType: order.productName,
+          shipTo,
+          assemblyDate,
+          inspectionDate,
+          mhmDate,
+          cageCode,
+          verifiedBy: verifierName,
+          verifiedAt: new Date().toISOString(),
+        }),
+      });
+      if (!sheetRes.ok) throw new Error("Failed to update quality sheet");
+      const sheetData = await sheetRes.json();
+      setQualitySheet(sheetData.qualitySheet);
+
+      // Update order status
+      await updateOrderStatus("verified");
+    } catch (err) {
+      setError("Failed to verify order");
+    }
   };
 
   if (loading) return <div className="p-8">Loading...</div>;
@@ -216,6 +274,14 @@ export default function OrderDetailPage({
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
+      {/* Error Banner */}
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <Link href="/orders">
@@ -276,7 +342,7 @@ export default function OrderDetailPage({
           <h2 className="text-lg font-semibold">Step 2: SAIC Quality Sheet</h2>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Lot Number *" value={lotNumber} onChange={setLotNumber} placeholder="e.g., 50415AL" />
-            <Field label="CAGE Code" value="1LT50" disabled />
+            <Field label="CAGE Code" value={cageCode} disabled />
             <Field label="Container Type" value={containerType} onChange={setContainerType} placeholder="e.g., 12 X 1 QT BOTTLES" />
             <Field label="Assembly Date" value={assemblyDate} onChange={setAssemblyDate} placeholder="MM/DD" />
             <Field label="Inspection Date" value={inspectionDate} onChange={setInspectionDate} placeholder="MM/DD" />

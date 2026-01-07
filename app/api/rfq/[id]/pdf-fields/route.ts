@@ -65,28 +65,46 @@ export async function GET(
     const fields = form.getFields().map((f: any) => {
       const name = f.getName();
       const base: any = { name };
-      if (f instanceof PDFTextField) base.type = "text";
-      else if (f instanceof PDFCheckBox) base.type = "checkbox";
-      else if (f instanceof PDFRadioGroup) {
+      if (f instanceof PDFTextField) {
+        base.type = "text";
+        try {
+          base.value = f.getText() ?? null;
+        } catch {
+          base.value = null;
+        }
+      } else if (f instanceof PDFCheckBox) {
+        base.type = "checkbox";
+        try {
+          base.value = f.isChecked();
+        } catch {
+          base.value = null;
+        }
+      } else if (f instanceof PDFRadioGroup) {
         base.type = "radio";
         try {
           base.options = f.getOptions();
+          base.value = f.getSelected();
         } catch {
           base.options = [];
+          base.value = null;
         }
       } else if (f instanceof PDFDropdown) {
         base.type = "dropdown";
         try {
           base.options = f.getOptions();
+          base.value = f.getSelected();
         } catch {
           base.options = [];
+          base.value = null;
         }
       } else if (f instanceof PDFOptionList) {
         base.type = "optionlist";
         try {
           base.options = f.getOptions();
+          base.value = f.getSelected();
         } catch {
           base.options = [];
+          base.value = null;
         }
       } else {
         base.type = "other";
