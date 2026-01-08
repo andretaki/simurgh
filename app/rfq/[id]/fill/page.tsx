@@ -23,6 +23,7 @@ import {
   FileBadge,
 } from "lucide-react";
 import type { RfqSummary } from "@/lib/rfq-extraction-prompt";
+import { PastBidSearch } from "./PastBidSearch";
 
 interface RFQData {
   id: number;
@@ -84,6 +85,9 @@ export default function RFQFillPage() {
   const [quoteValidUntil, setQuoteValidUntil] = useState("");
   const [quoteNotes, setQuoteNotes] = useState("");
 
+  // Track which line item is being edited (for past price selection)
+  const [activeLineItemIndex, setActiveLineItemIndex] = useState(0);
+
   const [profileData, setProfileData] = useState({
     quoteRefNum: "",
     cageCode: "",
@@ -116,7 +120,7 @@ export default function RFQFillPage() {
       minimumQty: string;
       qtyUnitPack: string;
       exceptionNote: string;
-      noBidReason: "" | "not_our_product" | "distributor_only" | "obsolete" | "out_of_stock" | "other";
+      noBidReason: "" | "low_quantity" | "nsn_no_bid" | "other";  // Simplified: qty too low, NSN we don't bid, other
       noBidOtherText: string;
       priceBreaks: Array<{
         fromQty: number;
@@ -190,14 +194,14 @@ export default function RFQFillPage() {
     const lineItems = extractedItems.map((item, index) => ({
       itemNumber: item?.itemNumber || String(index + 1),
       unitCost: "",
-      deliveryDays: "",
-      countryOfOrigin: "USA",
+      deliveryDays: "45",              // ALWAYS 45 days - boss never changes this
+      countryOfOrigin: "USA",          // ALWAYS USA - boss never changes this
       manufacturer: profile.companyName || "",
-      isIawNsn: false,
+      isIawNsn: true,                  // Default Yes
       minimumQty: "",
       qtyUnitPack: "",
       exceptionNote: "",
-      noBidReason: "" as "" | "not_our_product" | "distributor_only" | "obsolete" | "out_of_stock" | "other",
+      noBidReason: "" as "" | "low_quantity" | "nsn_no_bid" | "other",  // Simplified no-bid reasons
       noBidOtherText: "",
       priceBreaks: [] as Array<{ fromQty: number; toQty: number; unitCost: string; deliveryDays: string }>,
     }));
@@ -409,6 +413,12 @@ export default function RFQFillPage() {
     }));
   };
 
+  // Handler for when boss clicks a past price from search results
+  const handlePastPriceSelect = (unitCost: string, itemIndex?: number) => {
+    const targetIndex = itemIndex ?? activeLineItemIndex;
+    updateLineItem(targetIndex, { unitCost });
+  };
+
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || file.type !== "application/pdf") {
@@ -602,6 +612,14 @@ export default function RFQFillPage() {
               )}
             </div>
 
+            {/* Past Bid Search - Boss's quick lookup */}
+            <PastBidSearch
+              onSelectPrice={handlePastPriceSelect}
+              currentNsn={items[0]?.nsn}
+              activeLineItemIndex={activeLineItemIndex}
+              lineItemCount={items.length}
+            />
+
             {/* LINE ITEMS */}
             <div className="bg-white rounded-2xl border p-6">
               <div className="flex items-center gap-2 mb-4">
@@ -699,219 +717,255 @@ export default function RFQFillPage() {
                       </div>
                     )}
 
-                    {/* Pricing (boss fills these) */}
-                    <div className="mt-4 bg-gray-50 rounded-xl p-4 border">
-                      <div className="flex items-center justify-between mb-3">
-                        <p className="text-sm font-semibold text-gray-800">Pricing</p>
+                    {/* Pricing - Simplified for boss */}
+                    <div className="mt-4 rounded-xl overflow-hidden border-2 border-green-200">
+                      {/* Header with defaults indicator */}
+                      <div className="bg-green-50 px-4 py-3 flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold text-green-900">Your Quote</p>
+                          <p className="text-xs text-green-700 flex items-center gap-2 mt-0.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 rounded">
+                              <Truck className="h-3 w-3" />
+                              45 days
+                            </span>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 rounded">
+                              Made in USA
+                            </span>
+                            <span className="text-green-600">(auto-filled)</span>
+                          </p>
+                        </div>
                         {pricingDisabled && (
-                          <span className="text-xs text-gray-500">Disabled (No Bid)</span>
+                          <span className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded">Global No Bid</span>
                         )}
                       </div>
 
-                      <div className="mb-3">
-                        <p className="text-gray-400 text-xs uppercase mb-1">Line Item Decision</p>
-                        <select
-                          value={responseItem?.noBidReason || ""}
-                          onChange={(e) =>
-                            updateLineItem(index, {
-                              noBidReason: e.target.value as any,
-                              noBidOtherText: e.target.value === "other" ? (responseItem?.noBidOtherText || "") : "",
-                              unitCost: e.target.value ? "" : (responseItem?.unitCost || ""),
-                              deliveryDays: e.target.value ? "" : (responseItem?.deliveryDays || ""),
-                            })
-                          }
-                          disabled={pricingDisabled}
-                          className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
-                        >
-                          <option value="">Bid this line item</option>
-                          <option value="not_our_product">No bid: Not our product</option>
-                          <option value="distributor_only">No bid: Distributor only</option>
-                          <option value="obsolete">No bid: Product obsolete</option>
-                          <option value="out_of_stock">No bid: Out of stock</option>
-                          <option value="other">No bid: Other</option>
-                        </select>
-                        {responseItem?.noBidReason === "other" && (
-                          <input
-                            value={responseItem?.noBidOtherText || ""}
-                            onChange={(e) => updateLineItem(index, { noBidOtherText: e.target.value })}
-                            placeholder="Other reason"
-                            disabled={pricingDisabled}
-                            className="mt-2 w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
-                          />
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <p className="text-gray-400 text-xs uppercase mb-1">Unit Cost</p>
-                          <input
-                            value={responseItem?.unitCost || ""}
-                            onChange={(e) => updateLineItem(index, { unitCost: e.target.value })}
-                            placeholder="e.g. 159.85"
-                            disabled={pricingDisabled || !!responseItem?.noBidReason}
-                            className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
-                          />
-                        </div>
-                        <div>
-                          <p className="text-gray-400 text-xs uppercase mb-1">Delivery Days</p>
-                          <input
-                            value={responseItem?.deliveryDays || ""}
-                            onChange={(e) => updateLineItem(index, { deliveryDays: e.target.value })}
-                            placeholder="e.g. 30"
-                            disabled={pricingDisabled || !!responseItem?.noBidReason}
-                            className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 mt-3">
-                        <div>
-                          <p className="text-gray-400 text-xs uppercase mb-1">Country Of Origin</p>
-                          <select
-                            value={(responseItem?.countryOfOrigin || "USA").toUpperCase() === "USA" ? "USA" : "OTHER"}
-                            onChange={(e) => {
-                              if (e.target.value === "USA") {
-                                updateLineItem(index, { countryOfOrigin: "USA" });
-                              } else {
-                                updateLineItem(index, { countryOfOrigin: responseItem?.countryOfOrigin && responseItem.countryOfOrigin !== "USA" ? responseItem.countryOfOrigin : "" });
-                              }
-                            }}
-                            disabled={pricingDisabled}
-                            className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
-                          >
-                            <option value="USA">USA</option>
-                            <option value="OTHER">Other</option>
-                          </select>
-                          {(responseItem?.countryOfOrigin || "USA").toUpperCase() !== "USA" && (
+                      <div className="bg-white p-4 space-y-4">
+                        {/* No-Bid Toggle - compact */}
+                        <div className="flex items-center gap-4">
+                          <label className="flex items-center gap-2 cursor-pointer">
                             <input
-                              value={responseItem?.countryOfOrigin || ""}
-                              onChange={(e) => updateLineItem(index, { countryOfOrigin: e.target.value })}
-                              placeholder="Country name"
+                              type="checkbox"
+                              checked={!!responseItem?.noBidReason}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  updateLineItem(index, { noBidReason: "low_quantity", unitCost: "" });
+                                } else {
+                                  updateLineItem(index, { noBidReason: "" });
+                                }
+                              }}
                               disabled={pricingDisabled}
-                              className="mt-2 w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
+                              className="w-5 h-5 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                            />
+                            <span className="text-sm font-medium text-gray-700">No Bid</span>
+                          </label>
+
+                          {responseItem?.noBidReason && (
+                            <select
+                              value={responseItem.noBidReason}
+                              onChange={(e) => updateLineItem(index, { noBidReason: e.target.value as "" | "low_quantity" | "nsn_no_bid" | "other" })}
+                              className="flex-1 h-9 px-3 rounded-lg border border-gray-200 bg-white text-sm"
+                            >
+                              <option value="low_quantity">Quantity too low</option>
+                              <option value="nsn_no_bid">NSN we don&apos;t bid on</option>
+                              <option value="other">Other reason</option>
+                            </select>
+                          )}
+                          {responseItem?.noBidReason === "other" && (
+                            <input
+                              value={responseItem?.noBidOtherText || ""}
+                              onChange={(e) => updateLineItem(index, { noBidOtherText: e.target.value })}
+                              placeholder="Specify reason"
+                              className="flex-1 h-9 px-3 rounded-lg border border-gray-200 bg-white text-sm"
                             />
                           )}
                         </div>
-                        <div>
-                          <p className="text-gray-400 text-xs uppercase mb-1">Manufacturer</p>
-                          <input
-                            value={responseItem?.manufacturer || ""}
-                            onChange={(e) => updateLineItem(index, { manufacturer: e.target.value })}
-                            placeholder="Defaults to your company"
-                            disabled={pricingDisabled}
-                            className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
-                          />
-                        </div>
-                      </div>
 
-                      <div className="grid grid-cols-2 gap-3 mt-3">
-                        <div>
-                          <p className="text-gray-400 text-xs uppercase mb-1">IAW NSN?</p>
-                          <select
-                            value={responseItem?.isIawNsn ? "Y" : "N"}
-                            onChange={(e) => updateLineItem(index, { isIawNsn: e.target.value === "Y" })}
-                            disabled={pricingDisabled}
-                            className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
-                          >
-                            <option value="Y">Yes</option>
-                            <option value="N">No</option>
-                          </select>
-                        </div>
-                        <div>
-                          <p className="text-gray-400 text-xs uppercase mb-1">Exception Note</p>
-                          <input
-                            value={responseItem?.exceptionNote || ""}
-                            onChange={(e) => updateLineItem(index, { exceptionNote: e.target.value })}
-                            placeholder="Optional"
-                            disabled={pricingDisabled}
-                            className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 mt-3">
-                        <div>
-                          <p className="text-gray-400 text-xs uppercase mb-1">Minimum Qty Run</p>
-                          <input
-                            value={responseItem?.minimumQty || ""}
-                            onChange={(e) => updateLineItem(index, { minimumQty: e.target.value })}
-                            placeholder="Optional"
-                            disabled={pricingDisabled}
-                            className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
-                          />
-                        </div>
-                        <div>
-                          <p className="text-gray-400 text-xs uppercase mb-1">Qty Unit Pack</p>
-                          <input
-                            value={responseItem?.qtyUnitPack || ""}
-                            onChange={(e) => updateLineItem(index, { qtyUnitPack: e.target.value })}
-                            placeholder="Optional"
-                            disabled={pricingDisabled}
-                            className="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm disabled:bg-gray-100"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="mt-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-gray-400 text-xs uppercase">Price Breaks (up to 4)</p>
-                          <button
-                            type="button"
-                            onClick={() => addPriceBreak(index)}
-                            disabled={pricingDisabled || (responseItem?.priceBreaks?.length || 0) >= 4}
-                            className="text-xs px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50"
-                          >
-                            Add
-                          </button>
-                        </div>
-
-                        {(responseItem?.priceBreaks || []).length === 0 ? (
-                          <p className="text-xs text-gray-500">No price breaks</p>
-                        ) : (
+                        {/* Unit Cost - THE MAIN INPUT */}
+                        {!responseItem?.noBidReason && (
                           <div className="space-y-2">
-                            {(responseItem?.priceBreaks || []).map((pb, pbIdx) => (
-                              <div key={pbIdx} className="grid grid-cols-5 gap-2 items-center">
-                                <input
-                                  type="number"
-                                  value={pb.fromQty}
-                                  onChange={(e) => updatePriceBreak(index, pbIdx, { fromQty: Number(e.target.value) })}
-                                  placeholder="From"
-                                  disabled={pricingDisabled}
-                                  className="h-9 px-2 rounded border border-gray-200 bg-white text-sm disabled:bg-gray-100"
-                                />
-                                <input
-                                  type="number"
-                                  value={pb.toQty}
-                                  onChange={(e) => updatePriceBreak(index, pbIdx, { toQty: Number(e.target.value) })}
-                                  placeholder="To"
-                                  disabled={pricingDisabled}
-                                  className="h-9 px-2 rounded border border-gray-200 bg-white text-sm disabled:bg-gray-100"
-                                />
-                                <input
-                                  value={pb.unitCost}
-                                  onChange={(e) => updatePriceBreak(index, pbIdx, { unitCost: e.target.value })}
-                                  placeholder="Unit Cost"
-                                  disabled={pricingDisabled}
-                                  className="h-9 px-2 rounded border border-gray-200 bg-white text-sm disabled:bg-gray-100"
-                                />
-                                <input
-                                  value={pb.deliveryDays}
-                                  onChange={(e) => updatePriceBreak(index, pbIdx, { deliveryDays: e.target.value })}
-                                  placeholder="Del Days"
-                                  disabled={pricingDisabled}
-                                  className="h-9 px-2 rounded border border-gray-200 bg-white text-sm disabled:bg-gray-100"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => removePriceBreak(index, pbIdx)}
-                                  disabled={pricingDisabled}
-                                  className="h-9 px-2 rounded border border-gray-200 bg-white hover:bg-gray-50 text-sm disabled:opacity-50"
-                                >
-                                  ×
-                                </button>
+                            <label className="text-sm font-semibold text-gray-700">
+                              Unit Price ($) <span className="text-red-500">*</span>
+                            </label>
+                            <div className="relative">
+                              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-xl">$</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={responseItem?.unitCost || ""}
+                                onChange={(e) => updateLineItem(index, { unitCost: e.target.value })}
+                                onFocus={() => setActiveLineItemIndex(index)}
+                                placeholder="Enter price"
+                                className="w-full h-14 pl-10 pr-4 rounded-xl border-2 border-green-300 bg-green-50 text-2xl font-bold text-gray-900 focus:border-green-500 focus:ring-4 focus:ring-green-100 focus:bg-white transition-all"
+                                autoComplete="off"
+                              />
+                            </div>
+                            {responseItem?.unitCost && item.quantity && (
+                              <div className="flex items-center justify-between text-sm bg-blue-50 rounded-lg px-3 py-2 border border-blue-200">
+                                <span className="text-blue-700">
+                                  Total for {item.quantity} {item.unit || "EA"}:
+                                </span>
+                                <span className="font-bold text-blue-900 text-lg">
+                                  ${(parseFloat(responseItem.unitCost) * (item.quantity || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
                               </div>
-                            ))}
+                            )}
                           </div>
+                        )}
+
+                        {/* Advanced Options - Collapsible */}
+                        {!responseItem?.noBidReason && (
+                          <details className="group">
+                            <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700 flex items-center gap-1">
+                              <span className="group-open:rotate-90 transition-transform">▶</span>
+                              Advanced options (rarely needed)
+                            </summary>
+                            <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <p className="text-gray-400 text-xs uppercase mb-1">Delivery Days</p>
+                                  <input
+                                    value={responseItem?.deliveryDays || "45"}
+                                    onChange={(e) => updateLineItem(index, { deliveryDays: e.target.value })}
+                                    placeholder="45"
+                                    disabled={pricingDisabled}
+                                    className="w-full h-9 px-3 rounded-lg border border-gray-200 bg-gray-50 text-sm"
+                                  />
+                                </div>
+                                <div>
+                                  <p className="text-gray-400 text-xs uppercase mb-1">Country</p>
+                                  <select
+                                    value={(responseItem?.countryOfOrigin || "USA").toUpperCase() === "USA" ? "USA" : "OTHER"}
+                                    onChange={(e) => {
+                                      if (e.target.value === "USA") {
+                                        updateLineItem(index, { countryOfOrigin: "USA" });
+                                      } else {
+                                        updateLineItem(index, { countryOfOrigin: "" });
+                                      }
+                                    }}
+                                    disabled={pricingDisabled}
+                                    className="w-full h-9 px-3 rounded-lg border border-gray-200 bg-gray-50 text-sm"
+                                  >
+                                    <option value="USA">USA</option>
+                                    <option value="OTHER">Other</option>
+                                  </select>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <p className="text-gray-400 text-xs uppercase mb-1">Manufacturer</p>
+                                  <input
+                                    value={responseItem?.manufacturer || ""}
+                                    onChange={(e) => updateLineItem(index, { manufacturer: e.target.value })}
+                                    placeholder="Your company"
+                                    disabled={pricingDisabled}
+                                    className="w-full h-9 px-3 rounded-lg border border-gray-200 bg-gray-50 text-sm"
+                                  />
+                                </div>
+                                <div>
+                                  <p className="text-gray-400 text-xs uppercase mb-1">IAW NSN?</p>
+                                  <select
+                                    value={responseItem?.isIawNsn ? "Y" : "N"}
+                                    onChange={(e) => updateLineItem(index, { isIawNsn: e.target.value === "Y" })}
+                                    disabled={pricingDisabled}
+                                    className="w-full h-9 px-3 rounded-lg border border-gray-200 bg-gray-50 text-sm"
+                                  >
+                                    <option value="Y">Yes</option>
+                                    <option value="N">No</option>
+                                  </select>
+                                </div>
+                              </div>
+                              <div>
+                                <p className="text-gray-400 text-xs uppercase mb-1">Exception Note</p>
+                                <input
+                                  value={responseItem?.exceptionNote || ""}
+                                  onChange={(e) => updateLineItem(index, { exceptionNote: e.target.value })}
+                                  placeholder="Optional"
+                                  disabled={pricingDisabled}
+                                  className="w-full h-9 px-3 rounded-lg border border-gray-200 bg-gray-50 text-sm"
+                                />
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <p className="text-gray-400 text-xs uppercase mb-1">Min Qty Run</p>
+                                  <input
+                                    value={responseItem?.minimumQty || ""}
+                                    onChange={(e) => updateLineItem(index, { minimumQty: e.target.value })}
+                                    placeholder="Optional"
+                                    disabled={pricingDisabled}
+                                    className="w-full h-9 px-3 rounded-lg border border-gray-200 bg-gray-50 text-sm"
+                                  />
+                                </div>
+                                <div>
+                                  <p className="text-gray-400 text-xs uppercase mb-1">Qty Unit Pack</p>
+                                  <input
+                                    value={responseItem?.qtyUnitPack || ""}
+                                    onChange={(e) => updateLineItem(index, { qtyUnitPack: e.target.value })}
+                                    placeholder="Optional"
+                                    disabled={pricingDisabled}
+                                    className="w-full h-9 px-3 rounded-lg border border-gray-200 bg-gray-50 text-sm"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Price Breaks */}
+                              <div className="pt-2">
+                                <div className="flex items-center justify-between mb-2">
+                                  <p className="text-gray-400 text-xs uppercase">Price Breaks</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => addPriceBreak(index)}
+                                    disabled={pricingDisabled || (responseItem?.priceBreaks?.length || 0) >= 4}
+                                    className="text-xs px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50"
+                                  >
+                                    + Add
+                                  </button>
+                                </div>
+                                {(responseItem?.priceBreaks || []).length === 0 ? (
+                                  <p className="text-xs text-gray-400 italic">None</p>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {(responseItem?.priceBreaks || []).map((pb, pbIdx) => (
+                                      <div key={pbIdx} className="grid grid-cols-5 gap-2 items-center">
+                                        <input
+                                          type="number"
+                                          value={pb.fromQty}
+                                          onChange={(e) => updatePriceBreak(index, pbIdx, { fromQty: Number(e.target.value) })}
+                                          placeholder="From"
+                                          className="h-8 px-2 rounded border border-gray-200 bg-white text-xs"
+                                        />
+                                        <input
+                                          type="number"
+                                          value={pb.toQty}
+                                          onChange={(e) => updatePriceBreak(index, pbIdx, { toQty: Number(e.target.value) })}
+                                          placeholder="To"
+                                          className="h-8 px-2 rounded border border-gray-200 bg-white text-xs"
+                                        />
+                                        <input
+                                          value={pb.unitCost}
+                                          onChange={(e) => updatePriceBreak(index, pbIdx, { unitCost: e.target.value })}
+                                          placeholder="Price"
+                                          className="h-8 px-2 rounded border border-gray-200 bg-white text-xs"
+                                        />
+                                        <input
+                                          value={pb.deliveryDays}
+                                          onChange={(e) => updatePriceBreak(index, pbIdx, { deliveryDays: e.target.value })}
+                                          placeholder="Days"
+                                          className="h-8 px-2 rounded border border-gray-200 bg-white text-xs"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => removePriceBreak(index, pbIdx)}
+                                          className="h-8 px-2 rounded border border-gray-200 bg-white hover:bg-red-50 text-red-500 text-xs"
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </details>
                         )}
                       </div>
                     </div>

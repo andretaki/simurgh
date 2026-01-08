@@ -105,24 +105,27 @@ export async function GET(request: NextRequest) {
             max_tokens: 2000,
           });
 
-          let extractedFields: any = {};
+          let extractedFields: Record<string, unknown> = {};
           try {
             const content = completion.choices[0].message.content || "{}";
-            extractedFields = JSON.parse(content);
+            extractedFields = JSON.parse(content) as Record<string, unknown>;
           } catch (e) {
             console.error("Failed to parse AI response:", e);
             extractedFields = { error: "Failed to parse fields" };
           }
 
           // Update database with extracted data
-          const normalizedRfqNumber = normalizeRfqNumber(extractedFields.rfqNumber);
+          const rfqNumberValue = typeof extractedFields.rfqNumber === "string" ? extractedFields.rfqNumber : null;
+          const normalizedRfqNumber = normalizeRfqNumber(rfqNumberValue);
+          const dueDateValue = extractedFields.dueDate;
+          const contractingOfficeValue = typeof extractedFields.contractingOffice === "string" ? extractedFields.contractingOffice : null;
           await db.update(rfqDocuments)
             .set({
               extractedText: extractedText.substring(0, 10000),
               extractedFields,
               rfqNumber: normalizedRfqNumber,
-              dueDate: extractedFields.dueDate ? new Date(extractedFields.dueDate) : null,
-              contractingOffice: extractedFields.contractingOffice || null,
+              dueDate: typeof dueDateValue === "string" ? new Date(dueDateValue) : null,
+              contractingOffice: contractingOfficeValue,
               status: "processed",
               updatedAt: new Date(),
             })
@@ -136,11 +139,12 @@ export async function GET(request: NextRequest) {
           });
 
           // Send email notification for successfully processed RFQ
+          const titleValue = typeof extractedFields.title === "string" ? extractedFields.title : null;
           await sendRFQNotification({
             rfqNumber: normalizedRfqNumber,
-            title: extractedFields.title,
-            dueDate: extractedFields.dueDate ? new Date(extractedFields.dueDate) : null,
-            contractingOffice: extractedFields.contractingOffice,
+            title: titleValue,
+            dueDate: typeof dueDateValue === "string" ? new Date(dueDateValue) : null,
+            contractingOffice: contractingOfficeValue,
             fileName: attachment.name,
             emailSubject: email.subject,
             rfqId: rfqDoc.id,

@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { governmentOrders, qualitySheets, generatedLabels } from "@/drizzle/migrations/schema";
 import { desc, eq, sql } from "drizzle-orm";
 import { GovernmentOrderCreateSchema, validateRequestBody } from "@/lib/validations/api";
+import { apiSuccess, apiError, apiValidationError } from "@/lib/api-response";
+import { logger } from "@/lib/logger";
 
 // GET /api/orders - List all government orders
 export async function GET() {
@@ -62,17 +64,14 @@ export async function GET() {
       qualitySheet: qualitySheetMap.get(order.id) || null,
     }));
 
-    return NextResponse.json({ orders: ordersWithQualitySheets });
-  } catch (error: any) {
-    console.error("Error fetching orders:", error);
+    return apiSuccess({ orders: ordersWithQualitySheets });
+  } catch (error: unknown) {
+    logger.error("Error fetching orders", error);
     // Return empty array if table doesn't exist (42P01 = relation does not exist)
-    if (error?.code === '42P01') {
-      return NextResponse.json({ orders: [] });
+    if (error && typeof error === "object" && "code" in error && error.code === "42P01") {
+      return apiSuccess({ orders: [] });
     }
-    return NextResponse.json(
-      { error: "Failed to fetch orders" },
-      { status: 500 }
-    );
+    return apiError("Failed to fetch orders", 500);
   }
 }
 
@@ -82,10 +81,7 @@ export async function POST(request: Request) {
     const validation = await validateRequestBody(request, GovernmentOrderCreateSchema);
 
     if (!validation.success) {
-      return NextResponse.json(
-        { error: validation.error, details: validation.details.errors },
-        { status: 400 }
-      );
+      return apiValidationError(validation.error, validation.details.errors);
     }
 
     const data = validation.data;
@@ -116,12 +112,9 @@ export async function POST(request: Request) {
       })
       .returning();
 
-    return NextResponse.json({ order: newOrder });
-  } catch (error) {
-    console.error("Error creating order:", error);
-    return NextResponse.json(
-      { error: "Failed to create order" },
-      { status: 500 }
-    );
+    return apiSuccess({ order: newOrder });
+  } catch (error: unknown) {
+    logger.error("Error creating order", error);
+    return apiError("Failed to create order", 500);
   }
 }

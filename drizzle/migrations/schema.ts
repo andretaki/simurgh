@@ -210,6 +210,7 @@ export const governmentOrders = simurghSchema.table("government_orders", {
   // Source Document
   originalPdfS3Key: varchar("original_pdf_s3_key", { length: 500 }),
   originalPdfUrl: text("original_pdf_url"),
+  packingListS3Key: varchar("packing_list_s3_key", { length: 500 }), // Packing list attachment
   extractedData: jsonb("extracted_data"), // Full extracted JSON from PO
 
   // Workflow Status

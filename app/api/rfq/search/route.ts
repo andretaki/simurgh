@@ -4,6 +4,18 @@ import { rfqDocuments, rfqResponses } from "@/drizzle/migrations/schema";
 import { and, or, like, gte, lte, eq, desc, asc, sql } from "drizzle-orm";
 import { RfqSearchSchema } from "@/lib/validations/api";
 
+// Type for extracted fields structure
+interface ExtractedFieldValue {
+  confidence?: number;
+  value?: unknown;
+}
+
+interface ExtractedFields {
+  fields?: Record<string, ExtractedFieldValue>;
+  documentType?: string;
+  [key: string]: unknown;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -180,16 +192,17 @@ export async function POST(request: NextRequest) {
 
         results.forEach(r => {
           if (r.extractedFields && typeof r.extractedFields === 'object') {
-            const fields = (r.extractedFields as any).fields || {};
-            Object.values(fields).forEach((field: any) => {
-              if (field.confidence) {
+            const extracted = r.extractedFields as ExtractedFields;
+            const fields = extracted.fields || {};
+            Object.values(fields).forEach((field) => {
+              if (field && typeof field === 'object' && 'confidence' in field && typeof field.confidence === 'number') {
                 totalConfidence += field.confidence;
                 confidenceCount++;
               }
             });
 
             // Count document types
-            const docType = (r.extractedFields as any).documentType || 'Unknown';
+            const docType = extracted.documentType || 'Unknown';
             analytics.documentTypes[docType] = (analytics.documentTypes[docType] || 0) + 1;
           }
         });

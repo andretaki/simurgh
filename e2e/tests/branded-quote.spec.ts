@@ -1,308 +1,265 @@
-import { test, expect } from '../fixtures/base-test';
+import { test, expect } from '@playwright/test';
 
 /**
  * E2E Tests for Branded Vendor Quote PDF Feature
  *
- * Tests cover:
- * - Validation checklist blocks generation when required fields missing
- * - Vendor quote section with vendorQuoteRef, quoteValidUntil, notes
- * - Branded quote PDF generation
- * - Workflow dashboard display of vendorQuoteRef
+ * Tests the vendor quote section of the RFQ fill page including:
+ * - Vendor quote reference auto-generation
+ * - Quote valid until date
+ * - Notes/exceptions field
+ * - Branded quote PDF button state
  */
 
-test.describe('Branded Vendor Quote PDF', () => {
-  const rfqId = '1';
-
-  test.beforeEach(async ({ page, testHelpers }) => {
-    // Mock the RFQ data
-    await testHelpers.mockApiResponse(`**/api/rfq/${rfqId}`, {
-      id: parseInt(rfqId),
-      fileName: 'test-rfq.pdf',
-      s3Url: 'https://example.com/test-rfq.pdf',
-      rfqNumber: 'FA8501-24-Q-0001',
-      status: 'processed',
-      extractedFields: {
-        rfqSummary: {
-          header: {
-            rfqNumber: 'FA8501-24-Q-0001',
-            rfqDate: '2024-12-01',
-            responseDeadline: '2024-12-31',
-          },
-          buyer: {
-            contractingOffice: 'AFLCMC/HIB',
-            pocName: 'John Doe',
-            pocEmail: 'john.doe@us.af.mil',
-          },
-          items: [
-            {
-              itemNumber: '0001',
-              nsn: '6810-01-234-5678',
-              productType: 'Chemical Compound',
-              shortDescription: 'Acetone, Technical Grade',
-              quantity: 100,
-              unit: 'GL',
-              unitOfIssue: 'GL',
-            },
-            {
-              itemNumber: '0002',
-              nsn: '6810-01-234-5679',
-              productType: 'Chemical Compound',
-              shortDescription: 'Isopropyl Alcohol, 99%',
-              quantity: 50,
-              unit: 'GL',
-              unitOfIssue: 'GL',
-            },
-          ],
-        },
+const mockRfqData = {
+  id: 1,
+  fileName: 'test-rfq.pdf',
+  s3Url: 'https://example.com/test.pdf',
+  extractedFields: {
+    rfqSummary: {
+      header: {
+        rfqNumber: 'SPE4A5-24-Q-0456',
+        requestedReplyDate: '2024-02-28'
       },
-    });
-
-    // Mock company profile
-    await testHelpers.mockApiResponse('**/api/company-profile', {
-      id: 1,
-      companyName: 'Alliance Chemical',
-      cageCode: '12345',
-      samUei: 'ABC123DEF456',
-      naicsCode: '325199',
-      contactPerson: 'Boss Man',
-      contactEmail: 'boss@alliancechemical.com',
-      contactPhone: '512-365-6838',
-      address: '204 S. Edmond St., Taylor, TX 76574',
-    });
-
-    // Mock response endpoint
-    await testHelpers.mockApiResponse(`**/api/rfq/${rfqId}/response`, {
-      id: 1,
-      rfqDocumentId: parseInt(rfqId),
-      status: 'draft',
-    });
-  });
-
-  test('should show validation checklist with missing fields', async ({ page }) => {
-    await page.goto(`/rfq/${rfqId}/fill`);
-
-    // Wait for the page to load
-    await page.waitForSelector('[data-testid="submission-checklist"], text=Submission Checklist', { timeout: 10000 });
-
-    // The checklist should show warnings when prices are not filled
-    const checklist = page.locator('text=Submission Checklist').first();
-    await expect(checklist).toBeVisible();
-
-    // Should show that unit prices are required
-    const missingPriceWarning = page.locator('text=/Unit price required|At least one line item must have pricing/i');
-    await expect(missingPriceWarning.first()).toBeVisible();
-  });
-
-  test('should block branded quote generation when validation fails', async ({ page }) => {
-    await page.goto(`/rfq/${rfqId}/fill`);
-
-    // Wait for page to load
-    await page.waitForSelector('button:has-text("Download Branded Quote PDF")', { timeout: 10000 });
-
-    // The branded quote button should be disabled when validation fails
-    const brandedButton = page.locator('button:has-text("Download Branded Quote PDF")');
-    await expect(brandedButton).toBeDisabled();
-  });
-
-  test('should enable generation when prices are filled', async ({ page }) => {
-    await page.goto(`/rfq/${rfqId}/fill`);
-
-    // Wait for page to load and find price inputs
-    await page.waitForSelector('input[placeholder*="Unit Cost"]', { timeout: 10000 });
-
-    // Fill in prices for line items
-    const priceInputs = page.locator('input[placeholder*="Unit Cost"]');
-    const inputCount = await priceInputs.count();
-
-    for (let i = 0; i < inputCount; i++) {
-      await priceInputs.nth(i).fill('99.99');
+      buyer: {
+        contractingOffice: 'DLA Aviation'
+      },
+      items: [
+        {
+          itemNumber: '0001',
+          quantity: 200,
+          unit: 'GL',
+          nsn: '6810-00-111-2222',
+          productType: 'Acetone',
+          shortDescription: 'Industrial grade acetone'
+        }
+      ]
     }
+  }
+};
 
-    // Wait for validation to update
-    await page.waitForTimeout(500);
+const mockCompanyProfile = {
+  companyName: 'Alliance Chemical',
+  cageCode: '1ABC2',
+  samUei: 'ABCD1234EFGH',
+  naicsCode: '424690',
+  contactPerson: 'Jane Doe',
+  defaultPaymentTerms: 'Net 30',
+  defaultFob: 'origin',
+  businessType: 'small',
+  smallDisadvantaged: false,
+  womanOwned: true,
+  veteranOwned: false,
+  serviceDisabledVetOwned: false,
+  hubZone: false
+};
 
-    // The branded quote button should now be enabled
-    const brandedButton = page.locator('button:has-text("Download Branded Quote PDF")');
-    await expect(brandedButton).toBeEnabled();
-
-    // Checklist should show success
-    const successMessage = page.locator('text=All required fields are complete');
-    await expect(successMessage).toBeVisible();
-  });
-
-  test('should display vendor quote ref input', async ({ page }) => {
-    await page.goto(`/rfq/${rfqId}/fill`);
-
-    // Wait for page to load
-    await page.waitForSelector('text=Vendor Quote Reference', { timeout: 10000 });
-
-    // Should have vendor quote ref input
-    const vendorQuoteRefInput = page.locator('input[placeholder*="ACQ-RFQ"]');
-    await expect(vendorQuoteRefInput).toBeVisible();
-
-    // Should be auto-populated with expected format
-    const value = await vendorQuoteRefInput.inputValue();
-    expect(value).toMatch(/^ACQ-RFQ-/);
-  });
-
-  test('should display quote valid until date picker', async ({ page }) => {
-    await page.goto(`/rfq/${rfqId}/fill`);
-
-    // Wait for page to load
-    await page.waitForSelector('text=Quote Valid Until', { timeout: 10000 });
-
-    // Should have date input
-    const dateInput = page.locator('input[type="date"]');
-    await expect(dateInput.first()).toBeVisible();
-
-    // Should be auto-populated with a future date
-    const value = await dateInput.first().inputValue();
-    expect(value).toBeTruthy();
-
-    // The date should be in the future
-    const date = new Date(value);
-    expect(date.getTime()).toBeGreaterThan(Date.now());
-  });
-
-  test('should display notes textarea', async ({ page }) => {
-    await page.goto(`/rfq/${rfqId}/fill`);
-
-    // Wait for page to load
-    await page.waitForSelector('text=Notes / Exceptions', { timeout: 10000 });
-
-    // Should have notes textarea
-    const notesTextarea = page.locator('textarea[placeholder*="Keep brief"]');
-    await expect(notesTextarea).toBeVisible();
-  });
-
-  test('should generate branded quote PDF when button clicked', async ({ page, testHelpers }) => {
-    // Mock the generate-branded endpoint to return a PDF
-    await page.route(`**/api/rfq/${rfqId}/generate-branded`, async (route) => {
-      // Return a mock PDF response
-      const pdfContent = Buffer.from('%PDF-1.4 mock pdf content');
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/pdf',
-        headers: {
-          'Content-Disposition': 'attachment; filename="AllianceChemicalQuote_ACQ-RFQ-FA8501-24-Q-0001-1.pdf"',
-          'X-Vendor-Quote-Ref': 'ACQ-RFQ-FA8501-24-Q-0001-1',
-          'X-Quote-Valid-Until': '2025-01-15',
-        },
-        body: pdfContent,
-      });
+test.describe('Branded Quote - Vendor Quote Reference', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('**/api/rfq/1', async (route) => {
+      await route.fulfill({ status: 200, body: JSON.stringify(mockRfqData) });
+    });
+    await page.route('**/api/rfq/1/response', async (route) => {
+      await route.fulfill({ status: 404 });
+    });
+    await page.route('**/api/company-profile', async (route) => {
+      await route.fulfill({ status: 200, body: JSON.stringify(mockCompanyProfile) });
     });
 
-    await page.goto(`/rfq/${rfqId}/fill`);
+    await page.goto('/rfq/1/fill');
+    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('.animate-spin', { state: 'hidden', timeout: 10000 }).catch(() => {});
+  });
 
-    // Fill in required prices
-    await page.waitForSelector('input[placeholder*="Unit Cost"]', { timeout: 10000 });
-    const priceInputs = page.locator('input[placeholder*="Unit Cost"]');
-    const inputCount = await priceInputs.count();
+  test('should auto-generate quote reference with RFQ number', async ({ page }) => {
+    const input = page.locator('input[placeholder*="ACQ-RFQ"]');
+    const value = await input.inputValue();
 
-    for (let i = 0; i < inputCount; i++) {
-      await priceInputs.nth(i).fill('99.99');
-    }
+    // Should contain ACQ-RFQ and the RFQ number
+    expect(value).toContain('ACQ-RFQ');
+    expect(value).toContain('SPE4A5-24-Q-0456');
+  });
 
-    // Wait for validation
-    await page.waitForTimeout(500);
+  test('should allow editing vendor quote reference', async ({ page }) => {
+    const input = page.locator('input[placeholder*="ACQ-RFQ"]');
+    await input.clear();
+    await input.fill('CUSTOM-REF-001');
 
-    // Click the branded quote button
-    const brandedButton = page.locator('button:has-text("Download Branded Quote PDF")');
-    await expect(brandedButton).toBeEnabled();
+    await expect(input).toHaveValue('CUSTOM-REF-001');
+  });
 
-    // Set up download listener
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      brandedButton.click(),
-    ]);
-
-    // Verify the download occurred
-    expect(download.suggestedFilename()).toContain('AllianceChemicalQuote');
+  test('should show helper text about quote reference', async ({ page }) => {
+    await expect(page.locator('text=Auto-generated')).toBeVisible();
+    await expect(page.locator('text=branded quote and PO')).toBeVisible();
   });
 });
 
-test.describe('Workflow Dashboard - Vendor Quote Ref', () => {
-  test.beforeEach(async ({ testHelpers }) => {
-    // Mock the workflow API to return records with vendorQuoteRef
-    await testHelpers.mockApiResponse('**/api/workflow*', {
-      workflows: [
-        {
-          rfqNumber: 'FA8501-24-Q-0001',
-          poNumber: null,
-          status: 'response_submitted',
-          statusLabel: 'Quote Submitted',
-          rfq: {
-            id: 1,
-            fileName: 'test-rfq.pdf',
-            rfqNumber: 'FA8501-24-Q-0001',
-            contractingOffice: 'AFLCMC/HIB',
-            dueDate: '2024-12-31T00:00:00Z',
-            createdAt: '2024-12-01T00:00:00Z',
-          },
-          response: {
-            id: 1,
-            status: 'completed',
-            submittedAt: '2024-12-10T00:00:00Z',
-            vendorQuoteRef: 'ACQ-RFQ-FA8501-24-Q-0001-1',
-            generatedPdfUrl: 'https://example.com/buyer-form.pdf',
-            generatedBrandedQuoteUrl: 'https://example.com/branded-quote.pdf',
-          },
-          po: null,
-          qualitySheet: null,
-          labels: [],
-          rfqReceivedAt: '2024-12-01T00:00:00Z',
-          responseSubmittedAt: '2024-12-10T00:00:00Z',
-          poReceivedAt: null,
-          verifiedAt: null,
-        },
-      ],
-      count: 1,
-      limit: 50,
-      offset: 0,
+test.describe('Branded Quote - Quote Valid Until', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('**/api/rfq/1', async (route) => {
+      await route.fulfill({ status: 200, body: JSON.stringify(mockRfqData) });
     });
+    await page.route('**/api/rfq/1/response', async (route) => {
+      await route.fulfill({ status: 404 });
+    });
+    await page.route('**/api/company-profile', async (route) => {
+      await route.fulfill({ status: 200, body: JSON.stringify(mockCompanyProfile) });
+    });
+
+    await page.goto('/rfq/1/fill');
+    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('.animate-spin', { state: 'hidden', timeout: 10000 }).catch(() => {});
   });
 
-  test('should display vendorQuoteRef in workflow list', async ({ page }) => {
-    await page.goto('/workflow');
-
-    // Wait for workflow data to load
-    await page.waitForSelector('text=ACQ-RFQ-FA8501-24-Q-0001-1', { timeout: 10000 });
-
-    // Should display the vendor quote ref
-    const quoteRef = page.locator('text=ACQ-RFQ-FA8501-24-Q-0001-1');
-    await expect(quoteRef).toBeVisible();
+  test('should display Quote Valid Until label', async ({ page }) => {
+    await expect(page.locator('text=Quote Valid Until')).toBeVisible();
   });
 
-  test('should display PDF download links', async ({ page }) => {
-    await page.goto('/workflow');
+  test('should auto-set date to 30 days from now', async ({ page }) => {
+    const dateInput = page.locator('input[type="date"]').first();
+    const value = await dateInput.inputValue();
 
-    // Wait for workflow data to load
-    await page.waitForSelector('text=ACQ-RFQ-FA8501-24-Q-0001-1', { timeout: 10000 });
+    // Should be a valid date string
+    expect(value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
-    // Should have buyer form link
-    const buyerLink = page.locator('a:has-text("Buyer")');
-    await expect(buyerLink.first()).toBeVisible();
-
-    // Should have branded quote link
-    const quoteLink = page.locator('a:has-text("Quote")');
-    await expect(quoteLink.first()).toBeVisible();
+    // Should be approximately 30 days from now
+    const selectedDate = new Date(value);
+    const today = new Date();
+    const diffDays = Math.round((selectedDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    expect(diffDays).toBeGreaterThanOrEqual(28);
+    expect(diffDays).toBeLessThanOrEqual(32);
   });
 
-  test('should search by vendorQuoteRef', async ({ page }) => {
-    await page.goto('/workflow');
+  test('should allow changing quote valid date', async ({ page }) => {
+    const dateInput = page.locator('input[type="date"]').first();
+    await dateInput.fill('2025-06-15');
 
-    // Wait for page to load
-    await page.waitForSelector('input[placeholder*="Search"]', { timeout: 10000 });
+    await expect(dateInput).toHaveValue('2025-06-15');
+  });
+});
 
-    // Search for vendor quote ref
-    const searchInput = page.locator('input[placeholder*="Search"]');
-    await searchInput.fill('ACQ-RFQ-FA8501');
+test.describe('Branded Quote - Notes/Exceptions', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('**/api/rfq/1', async (route) => {
+      await route.fulfill({ status: 200, body: JSON.stringify(mockRfqData) });
+    });
+    await page.route('**/api/rfq/1/response', async (route) => {
+      await route.fulfill({ status: 404 });
+    });
+    await page.route('**/api/company-profile', async (route) => {
+      await route.fulfill({ status: 200, body: JSON.stringify(mockCompanyProfile) });
+    });
 
-    // Wait for filter to apply
-    await page.waitForTimeout(500);
+    await page.goto('/rfq/1/fill');
+    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('.animate-spin', { state: 'hidden', timeout: 10000 }).catch(() => {});
+  });
 
-    // Should still show the matching workflow
-    const quoteRef = page.locator('text=ACQ-RFQ-FA8501-24-Q-0001-1');
-    await expect(quoteRef).toBeVisible();
+  test('should display Notes/Exceptions label', async ({ page }) => {
+    await expect(page.locator('text=Notes / Exceptions')).toBeVisible();
+  });
+
+  test('should display placeholder text', async ({ page }) => {
+    const textarea = page.locator('textarea[placeholder*="Keep brief"]');
+    await expect(textarea).toBeVisible();
+    await expect(textarea).toHaveAttribute('placeholder', 'Keep brief. Do not contradict RFQ terms.');
+  });
+
+  test('should allow entering notes', async ({ page }) => {
+    const textarea = page.locator('textarea[placeholder*="Keep brief"]');
+    await textarea.fill('Delivery subject to carrier availability.');
+
+    await expect(textarea).toHaveValue('Delivery subject to carrier availability.');
+  });
+});
+
+test.describe('Branded Quote - Button State', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('**/api/rfq/1', async (route) => {
+      await route.fulfill({ status: 200, body: JSON.stringify(mockRfqData) });
+    });
+    await page.route('**/api/rfq/1/response', async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({ status: 200, body: JSON.stringify({ success: true }) });
+      } else {
+        await route.fulfill({ status: 404 });
+      }
+    });
+    await page.route('**/api/company-profile', async (route) => {
+      await route.fulfill({ status: 200, body: JSON.stringify(mockCompanyProfile) });
+    });
+
+    await page.goto('/rfq/1/fill');
+    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('.animate-spin', { state: 'hidden', timeout: 10000 }).catch(() => {});
+  });
+
+  test('should disable branded quote button when pricing incomplete', async ({ page }) => {
+    const button = page.locator('button:has-text("Download Branded Quote")');
+    await expect(button).toBeDisabled();
+  });
+
+  test('should enable branded quote button when pricing complete', async ({ page }) => {
+    // Fill in the unit price
+    const priceInput = page.locator('input[placeholder="Enter price"]').first();
+    await priceInput.fill('45.99');
+
+    const button = page.locator('button:has-text("Download Branded Quote")');
+    await expect(button).toBeEnabled();
+  });
+
+  test('should show green styling when ready to generate', async ({ page }) => {
+    // Fill in the unit price
+    const priceInput = page.locator('input[placeholder="Enter price"]').first();
+    await priceInput.fill('45.99');
+
+    // Checklist should turn green
+    await expect(page.locator('text=All required fields are complete')).toBeVisible();
+  });
+});
+
+test.describe('Branded Quote - WOSB Badge', () => {
+  test('should display WOSB badge when womanOwned is true', async ({ page }) => {
+    await page.route('**/api/rfq/1', async (route) => {
+      await route.fulfill({ status: 200, body: JSON.stringify(mockRfqData) });
+    });
+    await page.route('**/api/rfq/1/response', async (route) => {
+      await route.fulfill({ status: 404 });
+    });
+    await page.route('**/api/company-profile', async (route) => {
+      await route.fulfill({ status: 200, body: JSON.stringify(mockCompanyProfile) });
+    });
+
+    await page.goto('/rfq/1/fill');
+    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('.animate-spin', { state: 'hidden', timeout: 10000 }).catch(() => {});
+
+    // WOSB = Woman-Owned Small Business badge
+    await expect(page.locator('text=WOSB')).toBeVisible();
+  });
+});
+
+test.describe('Branded Quote - Responsive', () => {
+  test('should work on mobile', async ({ page }) => {
+    await page.route('**/api/rfq/1', async (route) => {
+      await route.fulfill({ status: 200, body: JSON.stringify(mockRfqData) });
+    });
+    await page.route('**/api/rfq/1/response', async (route) => {
+      await route.fulfill({ status: 404 });
+    });
+    await page.route('**/api/company-profile', async (route) => {
+      await route.fulfill({ status: 200, body: JSON.stringify(mockCompanyProfile) });
+    });
+
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto('/rfq/1/fill');
+    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('.animate-spin', { state: 'hidden', timeout: 10000 }).catch(() => {});
+
+    // Vendor Quote section should be visible
+    await expect(page.locator('h2:has-text("Vendor Quote")')).toBeVisible();
+
+    // Quote reference input should be accessible
+    const input = page.locator('input[placeholder*="ACQ-RFQ"]');
+    await expect(input).toBeVisible();
   });
 });

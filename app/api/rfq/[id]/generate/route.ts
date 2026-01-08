@@ -124,7 +124,7 @@ interface ResponseData {
     minimumQty: string;
     qtyUnitPack: string;
     exceptionNote: string;
-    noBidReason?: "" | "not_our_product" | "distributor_only" | "obsolete" | "out_of_stock" | "other";
+    noBidReason?: "" | "low_quantity" | "nsn_no_bid" | "other";  // Simplified no-bid reasons
     noBidOtherText?: string;
     priceBreaks: Array<{
       fromQty: number;
@@ -211,7 +211,7 @@ export async function POST(
     if (usedAcroForm) {
       // Some templates may not expose signature/price-break fields as AcroForm fields.
       // Overlay these by coordinates as a fallback.
-      let form: any = null;
+      let form: ReturnType<typeof pdfDoc.getForm> | null = null;
       const hasField = (name: string) => {
         try {
           return !!form?.getField(name);

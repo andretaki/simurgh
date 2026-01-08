@@ -5,31 +5,37 @@ import { EMAIL_CONFIG, detectDocumentType } from "@/lib/microsoft-graph/config";
 import { uploadToS3 } from "@/lib/aws/s3";
 import { db } from "@/lib/db";
 import { rfqDocuments, governmentOrders, governmentOrderRfqLinks } from "@/drizzle/migrations/schema";
-import {
-  getIngestionCheckpoint,
-  calculateLookbackDate,
-  markIngestionSuccess,
-  markIngestionFailed
-} from "@/lib/email-ingestion-tracker";
 import { extractRfqFromPdf } from "@/lib/extraction/rfq-extractor";
 import { extractPoFromPdf, isMainPoDocument } from "@/lib/extraction/po-extractor";
 import { eq, sql } from "drizzle-orm";
-import { sendRFQNotification } from "@/lib/email-notification";
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 300;
 
-/**
- * Check if an email has already been processed
- */
-async function isEmailAlreadyProcessed(emailId: string): Promise<boolean> {
+interface BackfillResult {
+  emailId: string;
+  subject: string;
+  receivedAt: string;
+  documentType: string;
+  status: "processed" | "skipped" | "failed";
+  skippedReason?: string;
+  orderId?: number;
+  rfqId?: number;
+  packingListStored?: boolean;
+  error?: string;
+}
+
+async function isEmailAlreadyProcessed(emailId: string): Promise<{ processed: boolean; type?: "rfq" | "po" }> {
   const existingRfq = await db
     .select({ id: rfqDocuments.id })
     .from(rfqDocuments)
     .where(sql`${rfqDocuments.extractedFields}->>'emailId' = ${emailId}`)
     .limit(1);
 
-  if (existingRfq.length > 0) return true;
+  if (existingRfq.length > 0) {
+    return { processed: true, type: "rfq" };
+  }
 
   const existingPO = await db
     .select({ id: governmentOrders.id })
@@ -37,16 +43,19 @@ async function isEmailAlreadyProcessed(emailId: string): Promise<boolean> {
     .where(sql`${governmentOrders.extractedData}->>'emailId' = ${emailId}`)
     .limit(1);
 
-  return existingPO.length > 0;
+  if (existingPO.length > 0) {
+    return { processed: true, type: "po" };
+  }
+
+  return { processed: false };
 }
 
 /**
- * Smart polling endpoint that tracks last successful run
- * GET /api/email/poll - Processes ONE email at a time
+ * Backfill endpoint to pull past N days of emails
+ * GET /api/email/backfill?days=30&dryRun=true
  */
 export async function GET(request: NextRequest) {
   try {
-    // Check for API key
     const apiKey = request.headers.get("x-api-key");
     const expectedKey = process.env.EMAIL_POLL_API_KEY;
 
@@ -54,148 +63,171 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get checkpoint and calculate lookback
-    const checkpoint = await getIngestionCheckpoint();
-    const lookback = calculateLookbackDate(checkpoint);
+    const searchParams = request.nextUrl.searchParams;
+    const days = Math.min(parseInt(searchParams.get("days") || "30"), 90);
+    const dryRun = searchParams.get("dryRun") === "true";
+    const markRead = searchParams.get("markRead") === "true";
+    const skipProcessed = searchParams.get("skipProcessed") !== "false";
 
-    console.log(`Smart email poll - ${lookback.reason}`);
-    console.log(`Looking back ${lookback.lookbackDays} days from ${lookback.lookbackDate.toISOString()}`);
+    const lookbackDate = new Date();
+    lookbackDate.setDate(lookbackDate.getDate() - days);
+
+    console.log(`Backfill: Looking back ${days} days, dryRun: ${dryRun}`);
 
     const client = createGraphClient();
     const userId = await getMonitoredUserId(client);
 
-    // Fetch recent emails
     const messages = await client
       .api(`/users/${userId}/mailFolders/inbox/messages`)
-      .select("id,subject,from,receivedDateTime,bodyPreview,hasAttachments,body,isRead")
+      .select("id,subject,from,receivedDateTime,bodyPreview,hasAttachments,isRead")
       .orderby("receivedDateTime desc")
-      .top(100)
+      .top(500)
       .get();
 
-    // Filter by sender, date and unread status
     const filteredMessages = (messages.value || [])
       .filter((m: any) => {
         const senderEmail = m.from?.emailAddress?.address?.toLowerCase();
         const expectedSender = EMAIL_CONFIG.RFQ_SENDER_EMAIL.toLowerCase();
         const emailDate = new Date(m.receivedDateTime);
-        return senderEmail === expectedSender &&
-               emailDate >= lookback.lookbackDate &&
-               !m.isRead;
+        return senderEmail === expectedSender && emailDate >= lookbackDate;
       })
       .sort((a: any, b: any) => {
         return new Date(a.receivedDateTime).getTime() - new Date(b.receivedDateTime).getTime();
-      })
-      .slice(0, 1);
-
-    if (!filteredMessages || filteredMessages.length === 0) {
-      await markIngestionSuccess();
-      return NextResponse.json({
-        timestamp: new Date().toISOString(),
-        emailsProcessed: 0,
-        message: "No new emails to process",
       });
-    }
 
-    const email = filteredMessages[0];
+    console.log(`Found ${filteredMessages.length} emails from ${EMAIL_CONFIG.RFQ_SENDER_EMAIL}`);
 
-    // Check if already processed (deduplication)
-    if (await isEmailAlreadyProcessed(email.id)) {
-      if (!email.isRead) {
-        await markEmailAsRead(client, userId, email.id!);
-      }
-      await markIngestionSuccess(new Date(email.receivedDateTime), email.id);
-      return NextResponse.json({
-        timestamp: new Date().toISOString(),
-        emailsProcessed: 0,
-        skipped: 1,
-        reason: "Email already processed",
-      });
-    }
-
-    // Skip if no attachments
-    if (!email.hasAttachments) {
-      await markIngestionSuccess(new Date(email.receivedDateTime), email.id);
-      return NextResponse.json({
-        timestamp: new Date().toISOString(),
-        emailsProcessed: 0,
-        skipped: 1,
-        reason: "Email has no attachments",
-      });
-    }
-
-    // Detect document type from subject
-    const detectedDoc = detectDocumentType(email.subject || "");
-    console.log(`Detected document type: ${detectedDoc.type}, number: ${detectedDoc.documentNumber}`);
-
-    const processedAttachments = [];
-
-    try {
-      const attachments = await fetchEmailAttachments(client, userId, email.id!);
-
-      if (detectedDoc.type === "po") {
-        // Process as Purchase Order - handle main PO and packing list separately
-        const result = await processPurchaseOrderEmail(attachments, email);
-        processedAttachments.push(result);
-      } else {
-        // Process as RFQ - process first PDF attachment
-        for (const attachment of attachments) {
-          if (!attachment.name?.toLowerCase().endsWith('.pdf')) continue;
-
-          const timestamp = Date.now();
-          const s3Key = `rfqs/email/${timestamp}-${attachment.name}`;
-          const buffer = Buffer.from(attachment.contentBytes!, "base64");
-
-          await uploadToS3(s3Key, buffer, attachment.contentType || "application/pdf");
-
-          const result = await processRfqAttachment(buffer, s3Key, email, attachment);
-          processedAttachments.push(result);
-          break; // Only process first PDF for RFQs
-        }
-      }
-
-      // Mark email as read
-      if (!email.isRead) {
-        await markEmailAsRead(client, userId, email.id!);
-      }
-
-      await markIngestionSuccess(new Date(email.receivedDateTime), email.id);
-
-      return NextResponse.json({
-        timestamp: new Date().toISOString(),
-        emailsProcessed: 1,
-        documentType: detectedDoc.type,
-        email: {
+    // Check which emails are already processed
+    const emailsWithStatus = await Promise.all(
+      filteredMessages.map(async (email: any) => {
+        const detected = detectDocumentType(email.subject || "");
+        const alreadyProcessed = skipProcessed ? await isEmailAlreadyProcessed(email.id) : { processed: false };
+        return {
+          id: email.id,
           subject: email.subject,
-          from: email.from?.emailAddress?.address,
           receivedAt: email.receivedDateTime,
-          attachments: processedAttachments,
-        },
-      });
+          documentType: detected.type,
+          documentNumber: detected.documentNumber,
+          hasAttachments: email.hasAttachments,
+          isRead: email.isRead,
+          alreadyProcessed: alreadyProcessed.processed,
+          existingType: alreadyProcessed.type,
+        };
+      })
+    );
 
-    } catch (error) {
-      await markIngestionFailed(error instanceof Error ? error.message : "Unknown error");
-      throw error;
+    if (dryRun) {
+      const toProcess = emailsWithStatus.filter(e => !e.alreadyProcessed && e.hasAttachments);
+      return NextResponse.json({
+        timestamp: new Date().toISOString(),
+        dryRun: true,
+        days,
+        summary: {
+          total: emailsWithStatus.length,
+          toProcess: toProcess.length,
+          alreadyProcessed: emailsWithStatus.filter(e => e.alreadyProcessed).length,
+          rfqs: toProcess.filter(e => e.documentType === "rfq").length,
+          pos: toProcess.filter(e => e.documentType === "po").length,
+        },
+        emails: emailsWithStatus,
+      });
     }
+
+    // Process emails
+    const results: BackfillResult[] = [];
+    let processedCount = 0;
+    let skippedCount = 0;
+    let errorCount = 0;
+
+    for (const emailStatus of emailsWithStatus) {
+      const email = filteredMessages.find((m: any) => m.id === emailStatus.id);
+
+      if (emailStatus.alreadyProcessed) {
+        results.push({
+          emailId: email.id,
+          subject: email.subject,
+          receivedAt: email.receivedDateTime,
+          documentType: emailStatus.documentType,
+          status: "skipped",
+          skippedReason: `Already processed as ${emailStatus.existingType}`,
+        });
+        skippedCount++;
+        continue;
+      }
+
+      if (!email.hasAttachments) {
+        results.push({
+          emailId: email.id,
+          subject: email.subject,
+          receivedAt: email.receivedDateTime,
+          documentType: emailStatus.documentType,
+          status: "skipped",
+          skippedReason: "No attachments",
+        });
+        skippedCount++;
+        continue;
+      }
+
+      try {
+        const attachments = await fetchEmailAttachments(client, userId, email.id!);
+        const detected = detectDocumentType(email.subject || "");
+
+        let result: BackfillResult;
+
+        if (detected.type === "po") {
+          result = await processPO(attachments, email);
+        } else {
+          result = await processRFQ(attachments, email);
+        }
+
+        results.push(result);
+        if (result.status === "processed") processedCount++;
+        else if (result.status === "failed") errorCount++;
+        else skippedCount++;
+
+        if (markRead && !email.isRead) {
+          await markEmailAsRead(client, userId, email.id!);
+        }
+
+      } catch (error) {
+        console.error(`Error processing email ${email.id}:`, error);
+        errorCount++;
+        results.push({
+          emailId: email.id,
+          subject: email.subject,
+          receivedAt: email.receivedDateTime,
+          documentType: emailStatus.documentType,
+          status: "failed",
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    return NextResponse.json({
+      timestamp: new Date().toISOString(),
+      days,
+      summary: {
+        total: emailsWithStatus.length,
+        processed: processedCount,
+        skipped: skippedCount,
+        errors: errorCount,
+      },
+      results,
+    });
 
   } catch (error) {
-    console.error("Error polling emails:", error);
-
-    try {
-      await markIngestionFailed(error instanceof Error ? error.message : "Unknown error");
-    } catch {}
-
+    console.error("Error in backfill:", error);
     return NextResponse.json(
-      {
-        error: "Failed to poll emails",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: "Failed to backfill", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
     );
   }
 }
 
 // ===============================
-// RFQ Processing with Gemini
+// Processing helpers
 // ===============================
 
 interface EmailData {
@@ -203,7 +235,6 @@ interface EmailData {
   subject?: string;
   from?: { emailAddress?: { address?: string; name?: string } };
   receivedDateTime?: string;
-  bodyPreview?: string;
 }
 
 interface AttachmentData {
@@ -213,25 +244,38 @@ interface AttachmentData {
   contentBytes?: string | null;
 }
 
-async function processRfqAttachment(
-  buffer: Buffer,
-  s3Key: string,
-  email: EmailData,
-  attachment: AttachmentData
-): Promise<{ type: "rfq"; rfqId: number; fileName: string; status: string; error?: string }> {
-  // Create database record first (ensures we don't lose the PDF even if extraction fails)
+async function processRFQ(attachments: AttachmentData[], email: EmailData): Promise<BackfillResult> {
+  const pdfAttachment = attachments.find(a => a.name?.toLowerCase().endsWith('.pdf'));
+  if (!pdfAttachment) {
+    return {
+      emailId: email.id!,
+      subject: email.subject || "",
+      receivedAt: email.receivedDateTime || "",
+      documentType: "rfq",
+      status: "skipped",
+      skippedReason: "No PDF attachment",
+    };
+  }
+
+  const timestamp = Date.now();
+  const s3Key = `rfqs/email/${timestamp}-${pdfAttachment.name}`;
+  const buffer = Buffer.from(pdfAttachment.contentBytes!, "base64");
+
+  await uploadToS3(s3Key, buffer, pdfAttachment.contentType || "application/pdf");
+
+  // Create record first
   const [rfqDoc] = await db.insert(rfqDocuments).values({
-    fileName: attachment.name!,
+    fileName: pdfAttachment.name!,
     s3Key,
-    fileSize: attachment.size!,
-    mimeType: attachment.contentType!,
+    fileSize: pdfAttachment.size!,
+    mimeType: pdfAttachment.contentType!,
     status: "processing",
     extractedFields: {
       emailId: email.id,
       emailSource: email.from?.emailAddress?.address,
-      emailSenderName: email.from?.emailAddress?.name,
       emailSubject: email.subject,
       emailReceivedAt: email.receivedDateTime,
+      backfilled: true,
     },
   }).returning();
 
@@ -248,6 +292,7 @@ async function processRfqAttachment(
           emailSource: email.from?.emailAddress?.address,
           emailSubject: email.subject,
           emailReceivedAt: email.receivedDateTime,
+          backfilled: true,
         },
         rfqNumber: extraction.rfqNumber,
         dueDate: extraction.dueDate,
@@ -257,29 +302,15 @@ async function processRfqAttachment(
       })
       .where(eq(rfqDocuments.id, rfqDoc.id));
 
-    // Send notification
-    try {
-      await sendRFQNotification({
-        rfqNumber: extraction.rfqNumber,
-        title: null,
-        dueDate: extraction.dueDate,
-        contractingOffice: extraction.contractingOffice,
-        fileName: attachment.name!,
-        emailSubject: email.subject,
-        rfqId: rfqDoc.id,
-      });
-    } catch (e) {
-      console.error("Failed to send RFQ notification:", e);
-    }
-
     return {
-      type: "rfq",
-      rfqId: rfqDoc.id,
-      fileName: attachment.name!,
+      emailId: email.id!,
+      subject: email.subject || "",
+      receivedAt: email.receivedDateTime || "",
+      documentType: "rfq",
       status: "processed",
+      rfqId: rfqDoc.id,
     };
   } else {
-    // Extraction failed - mark as extraction_failed so it can be retried
     await db.update(rfqDocuments)
       .set({
         extractedText: extraction.extractedText,
@@ -290,47 +321,38 @@ async function processRfqAttachment(
       .where(eq(rfqDocuments.id, rfqDoc.id));
 
     return {
-      type: "rfq",
+      emailId: email.id!,
+      subject: email.subject || "",
+      receivedAt: email.receivedDateTime || "",
+      documentType: "rfq",
+      status: "failed",
       rfqId: rfqDoc.id,
-      fileName: attachment.name!,
-      status: "extraction_failed",
       error: extraction.error,
     };
   }
 }
 
-// ===============================
-// Purchase Order Processing with Claude
-// ===============================
-
-async function processPurchaseOrderEmail(
-  attachments: AttachmentData[],
-  email: EmailData
-): Promise<{ type: "po"; orderId?: number; fileName: string; status: string; packingListStored?: boolean; error?: string }> {
-  // Separate main PO from packing lists
+async function processPO(attachments: AttachmentData[], email: EmailData): Promise<BackfillResult> {
   let mainPoAttachment: AttachmentData | null = null;
   let packingListAttachment: AttachmentData | null = null;
 
   for (const att of attachments) {
     if (!att.name?.toLowerCase().endsWith('.pdf')) continue;
-
     if (isMainPoDocument(att.name)) {
-      if (!mainPoAttachment) {
-        mainPoAttachment = att;
-      }
+      if (!mainPoAttachment) mainPoAttachment = att;
     } else {
-      if (!packingListAttachment) {
-        packingListAttachment = att;
-      }
+      if (!packingListAttachment) packingListAttachment = att;
     }
   }
 
   if (!mainPoAttachment) {
     return {
-      type: "po",
-      fileName: attachments[0]?.name || "unknown",
+      emailId: email.id!,
+      subject: email.subject || "",
+      receivedAt: email.receivedDateTime || "",
+      documentType: "po",
       status: "skipped",
-      error: "No main PO document found",
+      skippedReason: "No main PO document found",
     };
   }
 
@@ -338,10 +360,8 @@ async function processPurchaseOrderEmail(
   const mainPoBuffer = Buffer.from(mainPoAttachment.contentBytes!, "base64");
   const mainPoS3Key = `orders/email/${timestamp}-${mainPoAttachment.name}`;
 
-  // Upload main PO
   await uploadToS3(mainPoS3Key, mainPoBuffer, mainPoAttachment.contentType || "application/pdf");
 
-  // Upload packing list if present
   let packingListS3Key: string | null = null;
   if (packingListAttachment) {
     packingListS3Key = `orders/email/${timestamp}-${packingListAttachment.name}`;
@@ -349,11 +369,9 @@ async function processPurchaseOrderEmail(
     await uploadToS3(packingListS3Key, packingListBuffer, packingListAttachment.contentType || "application/pdf");
   }
 
-  // Extract PO data using Claude
   const extraction = await extractPoFromPdf(mainPoBuffer);
 
   if (!extraction.success) {
-    // Create order record even if extraction failed (so we don't lose the PDF)
     const [failedOrder] = await db.insert(governmentOrders).values({
       poNumber: "EXTRACTION_FAILED",
       productName: "Unknown - extraction failed",
@@ -366,21 +384,23 @@ async function processPurchaseOrderEmail(
         emailSubject: email.subject,
         emailReceivedAt: email.receivedDateTime,
         extractionError: extraction.error,
+        backfilled: true,
       },
       status: "extraction_failed",
     }).returning();
 
     return {
-      type: "po",
+      emailId: email.id!,
+      subject: email.subject || "",
+      receivedAt: email.receivedDateTime || "",
+      documentType: "po",
+      status: "failed",
       orderId: failedOrder.id,
-      fileName: mainPoAttachment.name!,
-      status: "extraction_failed",
       packingListStored: !!packingListS3Key,
       error: extraction.error,
     };
   }
 
-  // Try to link to originating RFQ
   let linkedRfqDocumentId: number | null = null;
   if (extraction.rfqNumber) {
     const [matchingRfq] = await db
@@ -388,14 +408,11 @@ async function processPurchaseOrderEmail(
       .from(rfqDocuments)
       .where(eq(rfqDocuments.rfqNumber, extraction.rfqNumber))
       .limit(1);
-
     if (matchingRfq) {
       linkedRfqDocumentId = matchingRfq.id;
-      console.log(`Auto-linked PO to RFQ: ${extraction.rfqNumber}`);
     }
   }
 
-  // Create order record
   const extractedData = extraction.extractedData;
   const [newOrder] = await db.insert(governmentOrders).values({
     poNumber: extractedData.poNumber || "UNKNOWN",
@@ -424,11 +441,11 @@ async function processPurchaseOrderEmail(
       emailSource: email.from?.emailAddress?.address,
       emailSubject: email.subject,
       emailReceivedAt: email.receivedDateTime,
+      backfilled: true,
     },
     status: "pending",
   }).returning();
 
-  // Create RFQ link in junction table
   if (linkedRfqDocumentId) {
     await db.insert(governmentOrderRfqLinks).values({
       governmentOrderId: newOrder.id,
@@ -436,13 +453,13 @@ async function processPurchaseOrderEmail(
     });
   }
 
-  console.log(`Processed PO ${extractedData.poNumber} from email, orderId: ${newOrder.id}`);
-
   return {
-    type: "po",
-    orderId: newOrder.id,
-    fileName: mainPoAttachment.name!,
+    emailId: email.id!,
+    subject: email.subject || "",
+    receivedAt: email.receivedDateTime || "",
+    documentType: "po",
     status: "processed",
+    orderId: newOrder.id,
     packingListStored: !!packingListS3Key,
   };
 }

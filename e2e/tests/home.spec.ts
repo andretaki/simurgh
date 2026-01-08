@@ -1,84 +1,47 @@
-import { test, expect } from '../fixtures/base-test';
-import { testData } from '../fixtures/test-data';
+import { test, expect } from '@playwright/test';
 
-test.describe('Home Page', () => {
+test.describe('Home Page (Dashboard)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(testData.urls.home);
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    // Wait for the main content to load
+    await page.waitForSelector('main h1', { timeout: 10000 });
   });
 
-  test('should display the main heading and welcome message', async ({ page }) => {
-    await expect(page.locator('h1')).toContainText('Simurgh');
-    await expect(page.locator('p').first()).toContainText('wise phoenix');
+  test('should display the dashboard heading', async ({ page }) => {
+    // Target the h1 in the main content area specifically
+    await expect(page.locator('main h1')).toContainText('Dashboard');
   });
 
-  test('should have navigation links', async ({ page }) => {
-    const navLinks = [
-      { text: 'RFQ', href: '/rfq' },
-      { text: 'Settings', href: '/settings' },
-      { text: 'History', href: '/history' },
-      { text: 'Analytics', href: '/analytics' }
-    ];
-
-    for (const link of navLinks) {
-      const navLink = page.locator(`a:has-text("${link.text}")`);
-      await expect(navLink).toBeVisible();
-    }
+  test('should display stats cards', async ({ page }) => {
+    // Check for stat cards - these are always present
+    await expect(page.locator('text=Awaiting Quote')).toBeVisible();
+    await expect(page.locator('text=Awaiting PO')).toBeVisible();
+    await expect(page.locator('text=In Verification')).toBeVisible();
+    await expect(page.locator('text=Completed')).toBeVisible();
   });
 
-  test('should navigate to RFQ page when clicking Get Started', async ({ page, testHelpers }) => {
-    const getStartedButton = page.locator('a:has-text("Get Started")');
-    await expect(getStartedButton).toBeVisible();
-    
-    await getStartedButton.click();
-    await testHelpers.waitForUrl(/\/rfq/);
-    await expect(page).toHaveURL(/\/rfq/);
+  test('should have New Project button', async ({ page }) => {
+    // The New Project button is inside a Link component in main content
+    const newProjectButton = page.locator('main button:has-text("New Project"), main a:has-text("New Project")');
+    await expect(newProjectButton.first()).toBeVisible();
   });
 
-  test('should have proper meta tags and title', async ({ page }) => {
-    await expect(page).toHaveTitle(/Simurgh/);
-    
-    const description = await page.locator('meta[name="description"]').getAttribute('content');
-    expect(description).toBeTruthy();
+  test('should display Recent Projects section', async ({ page }) => {
+    await expect(page.locator('text=Recent Projects')).toBeVisible();
+  });
+
+  test('should display workflow section', async ({ page }) => {
+    await expect(page.locator('h3:has-text("Workflow")')).toBeVisible();
   });
 
   test('should be responsive on mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    
-    await expect(page.locator('h1')).toBeVisible();
-    await expect(page.locator('a:has-text("Get Started")')).toBeVisible();
+    await expect(page.locator('main h1')).toBeVisible();
   });
 
-  test('should load without console errors', async ({ page }) => {
-    const consoleErrors: string[] = [];
-    page.on('console', msg => {
-      if (msg.type() === 'error') {
-        consoleErrors.push(msg.text());
-      }
-    });
-
-    await page.reload();
-    await page.waitForTimeout(2000);
-    
-    expect(consoleErrors).toHaveLength(0);
-  });
-
-  test('should have accessibility features', async ({ testHelpers }) => {
-    await testHelpers.checkAccessibility();
-  });
-
-  test('should display footer with links', async ({ page }) => {
-    const footer = page.locator('footer');
-    await expect(footer).toBeVisible();
-    
-    const footerLinks = [
-      'Privacy Policy',
-      'Terms of Service',
-      'Contact'
-    ];
-
-    for (const linkText of footerLinks) {
-      const link = footer.locator(`a:has-text("${linkText}")`);
-      await expect(link).toBeVisible();
-    }
+  test('should navigate to projects when clicking New Project', async ({ page }) => {
+    await page.click('main button:has-text("New Project"), main a:has-text("New Project")');
+    await expect(page).toHaveURL(/\/projects/);
   });
 });

@@ -3,7 +3,18 @@ import { db } from "@/lib/db";
 import { rfqDocuments } from "@/drizzle/migrations/schema";
 import { eq } from "drizzle-orm";
 import { downloadFromS3 } from "@/lib/aws/s3";
-import { PDFCheckBox, PDFDocument, PDFDropdown, PDFOptionList, PDFRadioGroup, PDFTextField } from "pdf-lib";
+import { PDFCheckBox, PDFDocument, PDFDropdown, PDFField, PDFOptionList, PDFPage, PDFRadioGroup, PDFTextField } from "pdf-lib";
+
+interface PdfFieldInfo {
+  name: string;
+  type: string;
+  value?: string | boolean | string[] | null;
+  options?: string[];
+  widgets?: Array<{
+    rect: { x: number; y: number; width: number; height: number } | null;
+    pageIndex: number | null;
+  }>;
+}
 
 export const runtime = "nodejs";
 
@@ -56,15 +67,16 @@ export async function GET(
     // Build page ref to index map for widget page resolution
     const pages = pdfDoc.getPages();
     const pageRefToIndex = new Map<string, number>();
-    pages.forEach((p: any, idx) => {
-      if (p.ref) {
-        pageRefToIndex.set(String(p.ref), idx);
+    pages.forEach((p: PDFPage, idx: number) => {
+      const pageWithRef = p as PDFPage & { ref?: unknown };
+      if (pageWithRef.ref) {
+        pageRefToIndex.set(String(pageWithRef.ref), idx);
       }
     });
 
-    const fields = form.getFields().map((f: any) => {
+    const fields: PdfFieldInfo[] = form.getFields().map((f: PDFField) => {
       const name = f.getName();
-      const base: any = { name };
+      const base: PdfFieldInfo = { name, type: "other" };
       if (f instanceof PDFTextField) {
         base.type = "text";
         try {

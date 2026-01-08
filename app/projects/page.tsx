@@ -18,6 +18,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { RfqQuickStats } from "@/components/rfq/RfqQuickStats";
 
 interface Project {
   id: number;
@@ -171,6 +172,9 @@ export default function ProjectsPage() {
           className="pl-10 border-slate-300"
         />
       </div>
+
+      {/* Quick Stats for Boss */}
+      <RfqQuickStats />
 
       {/* Projects List */}
       <Card className="border-slate-200">

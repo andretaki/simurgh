@@ -15,7 +15,8 @@ type ResponseLineItem = {
   minimumQty?: string;
   qtyUnitPack?: string;
   exceptionNote?: string;
-  noBidReason?: "" | "not_our_product" | "distributor_only" | "obsolete" | "out_of_stock" | "other";
+  // Simplified no-bid reasons: qty too low, NSN we don't bid, or other
+  noBidReason?: "" | "low_quantity" | "nsn_no_bid" | "other";
   noBidOtherText?: string;
 };
 
@@ -247,17 +248,16 @@ export async function fillAsrcAcroFormIfPresent(
 
     safeSelectRadio(form, `noBidReason-${n}`, (options) => {
       if (!item.noBidReason) return null;
+      // Map our simplified reasons to PDF options:
+      // PDF typically has: "Not our product", "Distributor only", "Obsolete", "Out of stock", "Other"
+      // We map: low_quantity -> index 3 (out of stock), nsn_no_bid -> index 0 (not our product), other -> index 4
       const idx =
-        item.noBidReason === "not_our_product"
-          ? 0
-          : item.noBidReason === "distributor_only"
-            ? 1
-            : item.noBidReason === "obsolete"
-              ? 2
-              : item.noBidReason === "out_of_stock"
-                ? 3
-                : 4;
-      return pickByIndex(options, idx) ?? pickByIndex(options, 0);
+        item.noBidReason === "low_quantity"
+          ? 3  // Map to "Out of stock" as closest match for low quantity
+          : item.noBidReason === "nsn_no_bid"
+            ? 0  // Map to "Not our product" as closest match for NSN we don't bid
+            : 4; // "other" -> last option
+      return pickByIndex(options, idx) ?? pickByIndex(options, options.length - 1) ?? pickByIndex(options, 0);
     });
     if (item.noBidReason === "other") {
       safeSetText(form, `noBidOther-${n}`, item.noBidOtherText || "");

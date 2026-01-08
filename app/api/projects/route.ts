@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects } from "@/drizzle/migrations/schema";
 import { desc } from "drizzle-orm";
+import { apiSuccess, apiError } from "@/lib/api-response";
+import { logger } from "@/lib/logger";
 
 // GET - List all projects
 export async function GET() {
@@ -11,10 +13,10 @@ export async function GET() {
       .from(projects)
       .orderBy(desc(projects.createdAt));
 
-    return NextResponse.json({ projects: allProjects });
-  } catch (error) {
-    console.error("Error fetching projects:", error);
-    return NextResponse.json({ projects: [] });
+    return apiSuccess({ projects: allProjects });
+  } catch (error: unknown) {
+    logger.error("Error fetching projects", error);
+    return apiError("Failed to fetch projects", 500);
   }
 }
 
@@ -36,12 +38,9 @@ export async function POST(request: NextRequest) {
       })
       .returning();
 
-    return NextResponse.json({ project: newProject });
-  } catch (error) {
-    console.error("Error creating project:", error);
-    return NextResponse.json(
-      { error: "Failed to create project" },
-      { status: 500 }
-    );
+    return apiSuccess({ project: newProject });
+  } catch (error: unknown) {
+    logger.error("Error creating project", error);
+    return apiError("Failed to create project", 500);
   }
 }

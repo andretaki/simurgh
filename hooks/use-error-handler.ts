@@ -4,7 +4,7 @@ import { useToast } from "@/components/ui/use-toast"
 export interface ErrorInfo {
   message: string
   code?: string
-  details?: any
+  details?: unknown
   timestamp: Date
   retry?: () => void
 }
