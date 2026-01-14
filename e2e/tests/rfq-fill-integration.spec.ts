@@ -28,6 +28,9 @@ async function findValidRfqId(page: Page): Promise<number | null> {
 }
 
 test.describe('RFQ Fill - Integration Tests', () => {
+  // Run these tests serially to avoid race conditions on shared database data
+  test.describe.configure({ mode: 'serial' });
+
   let rfqId: number | null = null;
 
   test.beforeAll(async ({ browser }) => {

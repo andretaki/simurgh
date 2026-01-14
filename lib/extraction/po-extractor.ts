@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { normalizeRfqNumber } from "@/lib/rfq-number";
+import { parseAiJsonSafe } from "@/lib/utils/parse-ai-json";
 
 const anthropic = new Anthropic();
 
@@ -76,20 +77,25 @@ export async function extractPoFromPdf(pdfBuffer: Buffer): Promise<PoExtractionR
       };
     }
 
-    // Clean and parse JSON
-    const cleanJson = textContent.text
-      .trim()
-      .replace(/```json\n?/g, "")
-      .replace(/```\n?/g, "")
-      .trim();
+    // Parse AI response with robust markdown stripping
+    const parseResult = parseAiJsonSafe<Record<string, unknown>>(textContent.text);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        extractedData: {},
+        poNumber: null,
+        rfqNumber: null,
+        error: `Failed to parse AI extraction response: ${parseResult.error}`,
+      };
+    }
 
-    const extractedData = JSON.parse(cleanJson);
-    const rfqNumber = normalizeRfqNumber(extractedData.rfqNumber);
+    const extractedData = parseResult.data || {};
+    const rfqNumber = normalizeRfqNumber(extractedData.rfqNumber as string | null | undefined);
 
     return {
       success: true,
       extractedData,
-      poNumber: extractedData.poNumber || null,
+      poNumber: (extractedData.poNumber as string) || null,
       rfqNumber,
     };
   } catch (error) {

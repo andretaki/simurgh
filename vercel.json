@@ -3,11 +3,18 @@
     {
       "path": "/api/email/poll",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/opportunities/sync",
+      "schedule": "0 6 * * *"
     }
   ],
   "functions": {
     "app/api/email/poll/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/opportunities/sync/route.ts": {
+      "maxDuration": 120
     },
     "app/api/email/backfill/route.ts": {
       "maxDuration": 300

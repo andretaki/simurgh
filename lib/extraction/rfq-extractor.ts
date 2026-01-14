@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import pdfParse from "pdf-parse";
 import { RFQ_EXTRACTION_PROMPT, ExtractedRfqData } from "@/lib/rfq-extraction-prompt";
 import { normalizeRfqNumber } from "@/lib/rfq-number";
+import { parseAiJsonSafe } from "@/lib/utils/parse-ai-json";
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
@@ -60,26 +61,12 @@ export async function extractRfqFromPdf(pdfBuffer: Buffer): Promise<RfqExtractio
     });
 
     const completion = result.response;
-    let extractedFields: Record<string, unknown> = {};
+    const content = completion.text() || "{}";
 
-    try {
-      let content = completion.text() || "{}";
-
-      // Clean up markdown code blocks if present
-      content = content
-        .replace(/```json\n?/gi, "")
-        .replace(/```\n?/g, "")
-        .trim();
-
-      // Try to find JSON object in the response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        content = jsonMatch[0];
-      }
-
-      extractedFields = JSON.parse(content);
-    } catch (e) {
-      console.error("Failed to parse Gemini response:", e);
+    // Parse AI response with robust markdown stripping
+    const parseResult = parseAiJsonSafe<Record<string, unknown>>(content);
+    if (!parseResult.success) {
+      console.error("Failed to parse Gemini response:", parseResult.error);
       return {
         success: false,
         extractedText: extractedText.substring(0, 10000),
@@ -87,9 +74,11 @@ export async function extractRfqFromPdf(pdfBuffer: Buffer): Promise<RfqExtractio
         rfqNumber: null,
         contractingOffice: null,
         dueDate: null,
-        error: "Failed to parse AI extraction response",
+        error: `Failed to parse AI extraction response: ${parseResult.error}`,
       };
     }
+
+    const extractedFields = parseResult.data || {};
 
     // Extract key fields from the structured response
     const rfqSummary = (extractedFields as unknown as ExtractedRfqData).rfqSummary;

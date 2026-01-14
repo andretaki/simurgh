@@ -1,19 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processRFQEmails } from "@/lib/microsoft-graph/email-service";
+import { detectDocumentType } from "@/lib/microsoft-graph/config";
 import { db } from "@/lib/db";
-import { rfqDocuments } from "@/drizzle/migrations/schema";
+import { rfqDocuments, governmentOrders, governmentOrderRfqLinks } from "@/drizzle/migrations/schema";
 import { downloadFromS3 } from "@/lib/aws/s3";
-import pdfParse from "pdf-parse";
-import OpenAI from "openai";
-import { normalizeRfqNumber } from "@/lib/rfq-number";
+import { extractRfqFromPdf } from "@/lib/extraction/rfq-extractor";
+import { extractPoFromPdf, isMainPoDocument } from "@/lib/extraction/po-extractor";
+import { eq } from "drizzle-orm";
+import { sendRFQNotification } from "@/lib/email-notification";
 
 // Force dynamic rendering to prevent static generation errors
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+interface ProcessedAttachment {
+  name: string;
+  s3Key: string;
+  size: number;
+  contentType: string;
+}
+
+interface ProcessedEmail {
+  subject: string;
+  sender: string;
+  senderName: string;
+  receivedDateTime: string;
+  bodyPreview: string;
+  attachments: ProcessedAttachment[];
+}
 
 /**
  * Manual endpoint to trigger email ingestion
@@ -22,10 +36,10 @@ const openai = new OpenAI({
 export async function GET(request: NextRequest) {
   try {
     console.log("Starting email ingestion process...");
-    
+
     // Process emails from inbox
-    const processedEmails = await processRFQEmails();
-    
+    const processedEmails = await processRFQEmails() as ProcessedEmail[];
+
     if (processedEmails.length === 0) {
       return NextResponse.json({
         message: "No new RFQ emails found",
@@ -34,138 +48,34 @@ export async function GET(request: NextRequest) {
     }
 
     const results = [];
-    
-    // Process each email and its attachments
+
+    // Process each email
     for (const email of processedEmails) {
-      for (const attachment of email.attachments) {
-        try {
-          // Create database record with email metadata
-          const [rfqDoc] = await db.insert(rfqDocuments).values({
-            fileName: attachment.name,
-            s3Key: attachment.s3Key,
-            fileSize: attachment.size,
-            mimeType: attachment.contentType,
-            status: "processing",
-            // Store email metadata in extractedFields
-            extractedFields: {
-              emailSource: email.sender,
-              emailSenderName: email.senderName,
-              emailSubject: email.subject,
-              emailReceivedAt: email.receivedDateTime,
-              emailBodyPreview: email.bodyPreview,
-            },
-          }).returning();
+      // Detect document type from subject
+      const detectedDoc = detectDocumentType(email.subject || "");
+      console.log(`Ingest: Detected document type: ${detectedDoc.type}, subject: ${email.subject}`);
 
-          // Download and process the PDF
-          const pdfBuffer = await downloadFromS3(attachment.s3Key);
-          const pdfData = await pdfParse(pdfBuffer);
-          const extractedText = pdfData.text;
+      if (detectedDoc.type === "po") {
+        // Process as Purchase Order
+        const result = await processPurchaseOrderAttachments(email);
+        results.push(result);
+      } else {
+        // Process as RFQ - first PDF only
+        const firstPdfAttachment = email.attachments.find(a =>
+          a.name.toLowerCase().endsWith('.pdf')
+        );
 
-          // Use OpenAI to extract RFQ fields
-          const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [
-              {
-                role: "system",
-                content: `You are an expert at extracting information from RFQ (Request for Quote) documents. 
-                Extract the following fields from the provided text and return them as JSON:
-                - rfqNumber: The RFQ number or solicitation number
-                - title: The title or description of the RFQ
-                - dueDate: The response due date (ISO format if possible)
-                - contractingOffice: The contracting office or agency
-                - pocName: Point of contact name
-                - pocEmail: Point of contact email
-                - pocPhone: Point of contact phone
-                - deliveryDate: Required delivery date
-                - deliveryLocation: Delivery location
-                - paymentTerms: Payment terms
-                - shippingTerms: Shipping/FOB terms
-                - requiredCertifications: Array of required certifications
-                - specialClauses: Any special clauses or requirements
-                - items: Array of line items with description, quantity, unit
-                - hasCageCode: boolean - whether CAGE code is required
-                - hasUnitCost: boolean - whether unit cost is required
-                - hasDeliveryTime: boolean - whether delivery time is required
-                - hasPaymentTerms: boolean - whether payment terms are required
-                
-                Also include the email metadata that was provided:
-                - emailSource: "${email.sender}"
-                - emailSenderName: "${email.senderName}"
-                - emailSubject: "${email.subject}"
-                - emailReceivedAt: "${email.receivedDateTime}"
-                
-                Return only valid JSON, no markdown formatting.`
-              },
-              {
-                role: "user",
-                content: extractedText.substring(0, 8000)
-              }
-            ],
-            temperature: 0.3,
-            max_tokens: 2000,
-          });
-
-          let extractedFields: Record<string, unknown> = {};
-          try {
-            const content = completion.choices[0].message.content || "{}";
-            extractedFields = JSON.parse(content) as Record<string, unknown>;
-          } catch (e) {
-            console.error("Failed to parse AI response:", e);
-            extractedFields = { error: "Failed to parse fields" };
-          }
-
-          // Update database with extracted data
-          const rfqNumberValue = typeof extractedFields.rfqNumber === "string" ? extractedFields.rfqNumber : null;
-          const normalizedRfqNumber = normalizeRfqNumber(rfqNumberValue);
-          const dueDateValue = extractedFields.dueDate;
-          const contractingOfficeValue = typeof extractedFields.contractingOffice === "string" ? extractedFields.contractingOffice : null;
-          await db.update(rfqDocuments)
-            .set({
-              extractedText: extractedText.substring(0, 10000),
-              extractedFields,
-              rfqNumber: normalizedRfqNumber,
-              dueDate: typeof dueDateValue === "string" ? new Date(dueDateValue) : null,
-              contractingOffice: contractingOfficeValue,
-              status: "processed",
-              updatedAt: new Date(),
-            })
-            .where(eq(rfqDocuments.id, rfqDoc.id));
-
-          results.push({
-            rfqId: rfqDoc.id,
-            fileName: attachment.name,
-            emailSubject: email.subject,
-            status: "processed",
-          });
-
-          // Send email notification for successfully processed RFQ
-          const titleValue = typeof extractedFields.title === "string" ? extractedFields.title : null;
-          await sendRFQNotification({
-            rfqNumber: normalizedRfqNumber,
-            title: titleValue,
-            dueDate: typeof dueDateValue === "string" ? new Date(dueDateValue) : null,
-            contractingOffice: contractingOfficeValue,
-            fileName: attachment.name,
-            emailSubject: email.subject,
-            rfqId: rfqDoc.id,
-          });
-
-        } catch (error) {
-          console.error(`Error processing attachment ${attachment.name}:`, error);
-          results.push({
-            fileName: attachment.name,
-            emailSubject: email.subject,
-            status: "failed",
-            error: error instanceof Error ? error.message : "Unknown error",
-          });
+        if (firstPdfAttachment) {
+          const result = await processRfqAttachment(firstPdfAttachment, email);
+          results.push(result);
         }
       }
     }
 
     return NextResponse.json({
-      message: `Processed ${processedEmails.length} emails with ${results.length} attachments`,
+      message: `Processed ${processedEmails.length} emails with ${results.length} documents`,
       emails: processedEmails.length,
-      attachments: results,
+      results,
     });
 
   } catch (error) {
@@ -177,6 +87,239 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Import eq from drizzle-orm
-import { eq } from "drizzle-orm";
-import { sendRFQNotification } from "@/lib/email-notification";
+/**
+ * Process an RFQ attachment
+ */
+async function processRfqAttachment(
+  attachment: ProcessedAttachment,
+  email: ProcessedEmail
+): Promise<{ type: string; rfqId?: number; fileName: string; status: string; error?: string }> {
+  try {
+    // Create database record with email metadata
+    const [rfqDoc] = await db.insert(rfqDocuments).values({
+      fileName: attachment.name,
+      s3Key: attachment.s3Key,
+      fileSize: attachment.size,
+      mimeType: attachment.contentType,
+      status: "processing",
+      extractedFields: {
+        emailSource: email.sender,
+        emailSenderName: email.senderName,
+        emailSubject: email.subject,
+        emailReceivedAt: email.receivedDateTime,
+        emailBodyPreview: email.bodyPreview,
+      },
+    }).returning();
+
+    // Download and process the PDF
+    const pdfBuffer = await downloadFromS3(attachment.s3Key);
+
+    // Extract using Gemini
+    const extraction = await extractRfqFromPdf(pdfBuffer);
+
+    if (extraction.success) {
+      await db.update(rfqDocuments)
+        .set({
+          extractedText: extraction.extractedText,
+          extractedFields: {
+            ...extraction.extractedFields,
+            emailSource: email.sender,
+            emailSenderName: email.senderName,
+            emailSubject: email.subject,
+            emailReceivedAt: email.receivedDateTime,
+          },
+          rfqNumber: extraction.rfqNumber,
+          dueDate: extraction.dueDate,
+          contractingOffice: extraction.contractingOffice,
+          status: "processed",
+          updatedAt: new Date(),
+        })
+        .where(eq(rfqDocuments.id, rfqDoc.id));
+
+      // Send notification
+      try {
+        await sendRFQNotification({
+          rfqNumber: extraction.rfqNumber,
+          title: null,
+          dueDate: extraction.dueDate,
+          contractingOffice: extraction.contractingOffice,
+          fileName: attachment.name,
+          emailSubject: email.subject,
+          rfqId: rfqDoc.id,
+        });
+      } catch (e) {
+        console.error("Failed to send RFQ notification:", e);
+      }
+
+      return {
+        type: "rfq",
+        rfqId: rfqDoc.id,
+        fileName: attachment.name,
+        status: "processed",
+      };
+    } else {
+      await db.update(rfqDocuments)
+        .set({
+          extractedText: extraction.extractedText,
+          status: "extraction_failed",
+          processingError: extraction.error,
+          updatedAt: new Date(),
+        })
+        .where(eq(rfqDocuments.id, rfqDoc.id));
+
+      return {
+        type: "rfq",
+        rfqId: rfqDoc.id,
+        fileName: attachment.name,
+        status: "extraction_failed",
+        error: extraction.error,
+      };
+    }
+  } catch (error) {
+    console.error(`Error processing RFQ attachment ${attachment.name}:`, error);
+    return {
+      type: "rfq",
+      fileName: attachment.name,
+      status: "failed",
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+/**
+ * Process Purchase Order attachments
+ */
+async function processPurchaseOrderAttachments(
+  email: ProcessedEmail
+): Promise<{ type: string; orderId?: number; fileName: string; status: string; error?: string }> {
+  try {
+    // Separate main PO from packing lists
+    let mainPoAttachment: ProcessedAttachment | null = null;
+    let packingListAttachment: ProcessedAttachment | null = null;
+
+    for (const att of email.attachments) {
+      if (!att.name.toLowerCase().endsWith('.pdf')) continue;
+
+      if (isMainPoDocument(att.name)) {
+        if (!mainPoAttachment) {
+          mainPoAttachment = att;
+        }
+      } else {
+        if (!packingListAttachment) {
+          packingListAttachment = att;
+        }
+      }
+    }
+
+    if (!mainPoAttachment) {
+      return {
+        type: "po",
+        fileName: email.attachments[0]?.name || "unknown",
+        status: "skipped",
+        error: "No main PO document found",
+      };
+    }
+
+    // Download and extract PO data
+    const pdfBuffer = await downloadFromS3(mainPoAttachment.s3Key);
+    const extraction = await extractPoFromPdf(pdfBuffer);
+
+    if (!extraction.success) {
+      // Create order record even if extraction failed
+      const [failedOrder] = await db.insert(governmentOrders).values({
+        poNumber: "EXTRACTION_FAILED",
+        productName: "Unknown - extraction failed",
+        quantity: 1,
+        originalPdfS3Key: mainPoAttachment.s3Key,
+        packingListS3Key: packingListAttachment?.s3Key || null,
+        extractedData: {
+          emailSource: email.sender,
+          emailSubject: email.subject,
+          emailReceivedAt: email.receivedDateTime,
+          extractionError: extraction.error,
+        },
+        status: "extraction_failed",
+      }).returning();
+
+      return {
+        type: "po",
+        orderId: failedOrder.id,
+        fileName: mainPoAttachment.name,
+        status: "extraction_failed",
+        error: extraction.error,
+      };
+    }
+
+    // Try to link to originating RFQ
+    let linkedRfqDocumentId: number | null = null;
+    if (extraction.rfqNumber) {
+      const [matchingRfq] = await db
+        .select()
+        .from(rfqDocuments)
+        .where(eq(rfqDocuments.rfqNumber, extraction.rfqNumber))
+        .limit(1);
+
+      if (matchingRfq) {
+        linkedRfqDocumentId = matchingRfq.id;
+        console.log(`Ingest: Auto-linked PO to RFQ: ${extraction.rfqNumber}`);
+      }
+    }
+
+    // Create order record
+    const extractedData = extraction.extractedData;
+    const [newOrder] = await db.insert(governmentOrders).values({
+      poNumber: extractedData.poNumber || "UNKNOWN",
+      rfqNumber: extraction.rfqNumber,
+      rfqDocumentId: linkedRfqDocumentId,
+      productName: extractedData.productName || "Unknown Product",
+      productDescription: extractedData.productDescription || null,
+      grade: extractedData.grade || null,
+      nsn: extractedData.nsn || null,
+      nsnBarcode: extractedData.nsn ? extractedData.nsn.replace(/-/g, "") : null,
+      quantity: extractedData.quantity || 1,
+      unitOfMeasure: extractedData.unitOfMeasure || null,
+      unitContents: extractedData.unitContents || null,
+      unitPrice: extractedData.unitPrice || null,
+      totalPrice: extractedData.totalPrice || null,
+      spec: extractedData.spec || null,
+      milStd: extractedData.milStd || null,
+      shipToName: extractedData.shipToName || null,
+      shipToAddress: extractedData.shipToAddress || null,
+      deliveryDate: extractedData.deliveryDate ? new Date(extractedData.deliveryDate) : null,
+      originalPdfS3Key: mainPoAttachment.s3Key,
+      packingListS3Key: packingListAttachment?.s3Key || null,
+      extractedData: {
+        ...extractedData,
+        emailSource: email.sender,
+        emailSubject: email.subject,
+        emailReceivedAt: email.receivedDateTime,
+      },
+      status: "pending",
+    }).returning();
+
+    // Create RFQ link in junction table
+    if (linkedRfqDocumentId) {
+      await db.insert(governmentOrderRfqLinks).values({
+        governmentOrderId: newOrder.id,
+        rfqDocumentId: linkedRfqDocumentId,
+      });
+    }
+
+    console.log(`Ingest: Processed PO ${extractedData.poNumber}, orderId: ${newOrder.id}`);
+
+    return {
+      type: "po",
+      orderId: newOrder.id,
+      fileName: mainPoAttachment.name,
+      status: "processed",
+    };
+  } catch (error) {
+    console.error("Error processing PO attachments:", error);
+    return {
+      type: "po",
+      fileName: email.attachments[0]?.name || "unknown",
+      status: "failed",
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}

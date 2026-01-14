@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { PipelineTabs } from "@/components/pipeline/PipelineTabs";
 import { ActionRequiredList } from "@/components/pipeline/ActionRequiredList";
+import { RfqList } from "@/components/pipeline/RfqList";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface Stats {
@@ -31,17 +32,41 @@ interface ActionItem {
   actions: { label: string; href: string }[];
 }
 
+interface RfqItem {
+  id: number;
+  rfqNumber: string | null;
+  contractingOffice: string | null;
+  dueDate: string | null;
+  status: string;
+  extractedFields: {
+    estimatedValue?: number;
+    lineItems?: unknown[];
+    hazmat?: boolean;
+  } | null;
+  responseStatus: string | null;
+}
+
 function PipelineContent() {
   const searchParams = useSearchParams();
   const activeTab = searchParams.get("tab") || "action-required";
 
   const [stats, setStats] = useState<Stats>({ actionRequired: 0, rfqs: 0, orders: 0 });
   const [actionGroups, setActionGroups] = useState<ActionGroup[]>([]);
+  const [rfqs, setRfqs] = useState<RfqItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [rfqsLoading, setRfqsLoading] = useState(false);
+  const [rfqsFetched, setRfqsFetched] = useState(false);
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Fetch RFQs when tab changes to rfqs
+  useEffect(() => {
+    if (activeTab === "rfqs" && !rfqsFetched) {
+      fetchRfqs();
+    }
+  }, [activeTab, rfqsFetched]);
 
   const fetchData = async () => {
     try {
@@ -63,6 +88,22 @@ function PipelineContent() {
       console.error("Failed to fetch pipeline data:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchRfqs = async () => {
+    setRfqsLoading(true);
+    try {
+      const res = await fetch("/api/pipeline/rfqs");
+      if (res.ok) {
+        const data = await res.json();
+        setRfqs(data.rfqs || []);
+        setRfqsFetched(true);
+      }
+    } catch (error) {
+      console.error("Failed to fetch RFQs:", error);
+    } finally {
+      setRfqsLoading(false);
     }
   };
 
