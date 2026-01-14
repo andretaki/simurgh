@@ -213,9 +213,31 @@ export const governmentOrders = simurghSchema.table("government_orders", {
   packingListS3Key: varchar("packing_list_s3_key", { length: 500 }), // Packing list attachment
   extractedData: jsonb("extracted_data"), // Full extracted JSON from PO
 
-  // Workflow Status
+  // Workflow Status (legacy - being replaced by stage)
   status: varchar("status", { length: 50 }).default("pending"),
   // pending, quality_sheet_created, labels_generated, verified, shipped
+
+  // Workflow stage (replaces simple status)
+  stage: varchar("stage", { length: 20 }).default("received"),
+  // Values: received, verified, sourcing, fulfilling, qc, ship, closed
+
+  // Sourcing fields
+  vendorId: integer("vendor_id"),
+  unitCost: numeric("unit_cost", { precision: 10, scale: 2 }),
+  shippingCost: numeric("shipping_cost", { precision: 10, scale: 2 }),
+  otherCost: numeric("other_cost", { precision: 10, scale: 2 }),
+  sourcingNotes: text("sourcing_notes"),
+
+  // QC fields
+  qcPassed: boolean("qc_passed"),
+  qcChecklist: jsonb("qc_checklist"),
+  qcNotes: text("qc_notes"),
+  qcCompletedAt: timestamp("qc_completed_at"),
+
+  // Shipping fields
+  labelUrl: text("label_url"),
+  trackingNumber: varchar("tracking_number", { length: 100 }),
+  shippedAt: timestamp("shipped_at"),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -224,6 +246,7 @@ export const governmentOrders = simurghSchema.table("government_orders", {
   rfqNumberIdx: index("idx_government_orders_rfq_number").on(table.rfqNumber),
   rfqDocumentIdIdx: index("idx_government_orders_rfq_document_id").on(table.rfqDocumentId),
   statusIdx: index("idx_government_orders_status").on(table.status),
+  stageIdx: index("idx_government_orders_stage").on(table.stage),
   nsnIdx: index("idx_government_orders_nsn").on(table.nsn),
   createdAtIdx: index("idx_government_orders_created_at").on(table.createdAt),
 }));
@@ -325,4 +348,193 @@ export const governmentOrderRfqLinks = simurghSchema.table("government_order_rfq
     table.governmentOrderId,
     table.rfqDocumentId
   ),
+}));
+
+// ===============================
+// SAM.GOV INTEGRATION TABLES
+// ===============================
+
+// SAM.gov Sync Configuration - stores filter settings for opportunity monitoring
+export const samGovSyncConfig = simurghSchema.table("sam_gov_sync_config", {
+  id: serial("id").primaryKey(),
+
+  // Filter criteria
+  naicsCodes: text("naics_codes").array(), // e.g., ['424690', '325998']
+  keywords: text("keywords").array(), // e.g., ['chemical', 'solvent']
+  excludedKeywords: text("excluded_keywords").array(), // e.g., ['construction']
+  agencies: text("agencies").array(), // e.g., ['DLA', 'GSA']
+  setAsideTypes: text("set_aside_types").array(), // e.g., ['SBA', 'SDVOSBC']
+  minValue: integer("min_value"), // Minimum contract value filter
+
+  // Sync settings
+  enabled: boolean("enabled").default(true),
+  syncIntervalHours: integer("sync_interval_hours").default(1),
+  notificationEmail: varchar("notification_email", { length: 255 }),
+
+  // Sync tracking
+  lastSyncAt: timestamp("last_sync_at"),
+  lastSyncStatus: varchar("last_sync_status", { length: 50 }), // success, failed, no_results
+  lastSyncError: text("last_sync_error"),
+  totalOpportunitiesFound: integer("total_opportunities_found").default(0),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// SAM.gov Opportunities - cached opportunities from SAM.gov
+export const samGovOpportunities = simurghSchema.table("sam_gov_opportunities", {
+  id: serial("id").primaryKey(),
+
+  // SAM.gov identifiers
+  solicitationNumber: varchar("solicitation_number", { length: 100 }).notNull().unique(),
+  noticeId: varchar("notice_id", { length: 100 }), // SAM.gov internal ID
+
+  // Opportunity details
+  title: text("title").notNull(),
+  description: text("description"),
+  postedDate: timestamp("posted_date"),
+  responseDeadline: timestamp("response_deadline"),
+
+  // Classification
+  naicsCode: varchar("naics_code", { length: 10 }),
+  productServiceCode: varchar("product_service_code", { length: 10 }),
+  setAsideType: varchar("set_aside_type", { length: 100 }),
+
+  // Agency info
+  agency: varchar("agency", { length: 255 }),
+  office: varchar("office", { length: 255 }),
+  location: varchar("location", { length: 255 }),
+
+  // Contact info
+  pocName: varchar("poc_name", { length: 255 }),
+  pocEmail: varchar("poc_email", { length: 255 }),
+  pocPhone: varchar("poc_phone", { length: 50 }),
+
+  // Links & attachments
+  uiLink: text("ui_link"), // Link to SAM.gov page
+  attachments: jsonb("attachments"), // Array of {name, url, type}
+
+  // Award info (if awarded)
+  awardAmount: numeric("award_amount", { precision: 15, scale: 2 }),
+  awardeeName: varchar("awardee_name", { length: 255 }),
+  awardDate: timestamp("award_date"),
+
+  // Raw data for debugging
+  rawData: jsonb("raw_data"),
+
+  // Import tracking
+  importedToRfqId: integer("imported_to_rfq_id").references(() => rfqDocuments.id),
+  status: varchar("status", { length: 50 }).default("new"), // new, reviewed, imported, dismissed
+  dismissedReason: varchar("dismissed_reason", { length: 255 }),
+
+  // Relevance scoring (based on NSN catalog match)
+  relevanceScore: integer("relevance_score").default(0), // 0-100
+  matchedKeyword: varchar("matched_keyword", { length: 100 }),
+  matchedFsc: varchar("matched_fsc", { length: 4 }),
+  matchedNsns: jsonb("matched_nsns"), // Array of NSNs from our catalog found in description
+
+  // Parsed item details
+  quantity: varchar("quantity", { length: 50 }), // e.g., "5 GL", "100 EA"
+  lineItems: jsonb("line_items"), // Array of {lineNumber, description, quantity, unit, nsn}
+  fullDescription: text("full_description"), // Fetched description text
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  solicitationNumberIdx: uniqueIndex("idx_sam_gov_opportunities_solicitation_number").on(table.solicitationNumber),
+  statusIdx: index("idx_sam_gov_opportunities_status").on(table.status),
+  naicsCodeIdx: index("idx_sam_gov_opportunities_naics_code").on(table.naicsCode),
+  postedDateIdx: index("idx_sam_gov_opportunities_posted_date").on(table.postedDate),
+  responseDeadlineIdx: index("idx_sam_gov_opportunities_response_deadline").on(table.responseDeadline),
+}));
+
+// SAM.gov Award Cache - historical award data for pricing intelligence
+export const samGovAwardCache = simurghSchema.table("sam_gov_award_cache", {
+  id: serial("id").primaryKey(),
+
+  // Contract identifiers
+  contractNumber: varchar("contract_number", { length: 100 }).notNull(),
+
+  // Classification
+  productServiceCode: varchar("product_service_code", { length: 10 }),
+  naicsCode: varchar("naics_code", { length: 10 }),
+  descriptionKeywords: text("description_keywords").array(), // Extracted keywords for matching
+
+  // Pricing data
+  awardDate: timestamp("award_date"),
+  totalValue: numeric("total_value", { precision: 15, scale: 2 }),
+  actionObligation: numeric("action_obligation", { precision: 15, scale: 2 }),
+  quantity: integer("quantity"),
+  unitPrice: numeric("unit_price", { precision: 12, scale: 4 }), // Calculated: totalValue / quantity
+
+  // Awardee info
+  awardeeName: varchar("awardee_name", { length: 255 }),
+  awardeeCage: varchar("awardee_cage", { length: 20 }),
+  awardeeUei: varchar("awardee_uei", { length: 20 }),
+
+  // Agency info
+  contractingAgency: varchar("contracting_agency", { length: 255 }),
+
+  // Description for matching
+  description: text("description"),
+
+  // Raw data
+  rawData: jsonb("raw_data"),
+
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  contractNumberIdx: index("idx_sam_gov_award_cache_contract_number").on(table.contractNumber),
+  pscIdx: index("idx_sam_gov_award_cache_psc").on(table.productServiceCode),
+  naicsIdx: index("idx_sam_gov_award_cache_naics").on(table.naicsCode),
+  awardDateIdx: index("idx_sam_gov_award_cache_award_date").on(table.awardDate),
+}));
+
+// NSN Catalog - Products we bid on
+export const nsnCatalog = simurghSchema.table("nsn_catalog", {
+  id: serial("id").primaryKey(),
+
+  // NSN identifier (e.g., 6810-00-286-5435)
+  nsn: varchar("nsn", { length: 20 }).notNull().unique(),
+
+  // Parsed components
+  fsc: varchar("fsc", { length: 4 }).notNull(), // Federal Supply Class (first 4 digits)
+  niin: varchar("niin", { length: 9 }), // National Item Identification Number (last 9 digits)
+
+  // Product info (can be enriched later)
+  productName: text("product_name"),
+  description: text("description"),
+
+  // Pricing history
+  lastBidPrice: numeric("last_bid_price", { precision: 12, scale: 4 }),
+  lastBidDate: timestamp("last_bid_date"),
+  avgBidPrice: numeric("avg_bid_price", { precision: 12, scale: 4 }),
+  bidCount: integer("bid_count").default(0),
+
+  // Status
+  active: boolean("active").default(true),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  nsnIdx: uniqueIndex("idx_nsn_catalog_nsn").on(table.nsn),
+  fscIdx: index("idx_nsn_catalog_fsc").on(table.fsc),
+}));
+
+// ===============================
+// VENDORS
+// ===============================
+
+// Vendors - suppliers for order fulfillment
+export const vendors = simurghSchema.table("vendors", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  contactName: varchar("contact_name", { length: 255 }),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  address: text("address"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  nameIdx: index("idx_vendors_name").on(table.name),
 }));
